@@ -35,7 +35,7 @@ import {
 } from 'lucide-react'
 import type { Session, User } from '@supabase/supabase-js'
 import type React from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import {
   Bar,
   BarChart,
@@ -299,6 +299,7 @@ function App() {
   const [uvaDate, setUvaDate] = useState<string | null>(null)
   const [uvaLoading, setUvaLoading] = useState(false)
   const [uvaManual, setUvaManual] = useState('')
+  const uvaFetchingRef = useRef(false) // guard against concurrent fetch calls
 
   const currentUser = profiles.find((profile) => profile.id === sessionUserId) ?? {
     ...demoUser,
@@ -475,21 +476,35 @@ function App() {
 
   async function fetchUvaValue(forceRefresh = false) {
     if (!forceRefresh && loadUvaFromCache()) return
+    if (uvaFetchingRef.current) return // already in flight — don't stack requests
+
+    uvaFetchingRef.current = true
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 10_000) // 10 s client-side timeout
+
     setUvaLoading(true)
+    if (import.meta.env.DEV) console.debug('[uva] request start')
+
     try {
-      const res = await fetch('/api/uva')
-      if (res.ok) {
-        const data = (await res.json()) as { ok?: boolean; value?: number; date?: string }
-        if (data.ok && data.value && data.date) {
-          setUvaValue(data.value)
-          setUvaDate(data.date)
-          localStorage.setItem(UVA_CACHE_KEY, JSON.stringify({ value: data.value, date: data.date, ts: Date.now() }))
-          setUvaLoading(false)
-          return
-        }
+      const res = await fetch('/api/uva', { signal: controller.signal })
+      const data = (await res.json()) as { ok?: boolean; value?: number; date?: string }
+      if (data.ok && data.value && data.date) {
+        setUvaValue(data.value)
+        setUvaDate(data.date)
+        localStorage.setItem(UVA_CACHE_KEY, JSON.stringify({ value: data.value, date: data.date, ts: Date.now() }))
+        if (import.meta.env.DEV) console.debug('[uva] request success', data.value, data.date)
+      } else {
+        if (import.meta.env.DEV) console.debug('[uva] request ok:false or missing fields', data)
       }
-    } catch { /* /api/uva unreachable — dev environment */ }
-    setUvaLoading(false)
+    } catch (err) {
+      const isTimeout = err instanceof Error && err.name === 'AbortError'
+      if (import.meta.env.DEV) console.debug(`[uva] ${isTimeout ? 'timeout' : 'error'}`, err)
+    } finally {
+      clearTimeout(timer)
+      uvaFetchingRef.current = false
+      setUvaLoading(false)
+      if (import.meta.env.DEV) console.debug('[uva] loading false')
+    }
   }
 
   function openEditPlan(plan: InstallmentPlan) {
