@@ -235,6 +235,8 @@ function App() {
   const [convertTxSource, setConvertTxSource] = useState<Transaction | null>(null)
   const [newCategoryForm, setNewCategoryForm] = useState({ name: '', color: '#0d9488' })
   const [confirmDeleteCategory, setConfirmDeleteCategory] = useState<string | null>(null)
+  const [editingCategory, setEditingCategory] = useState<string | null>(null)
+  const [editCategoryForm, setEditCategoryForm] = useState({ name: '', color: '#0d9488' })
   const [recurringForm, setRecurringForm] = useState({
     title: '',
     amount: '',
@@ -401,6 +403,15 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionUserId, isDemo])
 
+  // Auto-load UVA value once when entering installments view if there are UVA plans
+  useEffect(() => {
+    if (view !== 'installments') return
+    const hasUva = plans.some((p) => p.plan_type === 'UVA')
+    if (!hasUva || uvaValue !== null) return
+    void fetchUvaValue()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view, plans])
+
   function logSupabaseError(scope: string, error: { code?: string; message?: string; details?: string; hint?: string } | null) {
     if (!error || !import.meta.env.DEV) return
     console.error(`[supabase:${scope}]`, {
@@ -441,36 +452,37 @@ function App() {
     return getAppUrl()
   }
 
-  async function fetchUvaValue() {
+  const UVA_CACHE_KEY = 'cc-uva-cache'
+  const UVA_CACHE_TTL = 60 * 60 * 1000 // 1 hour in ms
+
+  function loadUvaFromCache(): boolean {
+    try {
+      const raw = localStorage.getItem(UVA_CACHE_KEY)
+      if (!raw) return false
+      const { value, date, ts } = JSON.parse(raw) as { value: number; date: string; ts: number }
+      if (Date.now() - ts > UVA_CACHE_TTL) return false
+      setUvaValue(value)
+      setUvaDate(date)
+      return true
+    } catch { return false }
+  }
+
+  async function fetchUvaValue(forceRefresh = false) {
+    if (!forceRefresh && loadUvaFromCache()) return
     setUvaLoading(true)
     try {
       const res = await fetch('/api/uva')
       if (res.ok) {
-        const data = (await res.json()) as { value: number; date: string }
-        setUvaValue(data.value)
-        setUvaDate(data.date)
-        setUvaLoading(false)
-        return
-      }
-    } catch { /* /api/uva not available in dev */ }
-    // Fallback: try BCRA directly (works if CORS headers are present)
-    try {
-      const today = new Date()
-      const fmt = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, '')
-      const from = fmt(new Date(today.getTime() - 5 * 86_400_000))
-      const to = fmt(today)
-      const res = await fetch(`https://api.bcra.gob.ar/estadisticas/v3.0/variables/31/${from}/${to}`)
-      if (res.ok) {
-        const data = (await res.json()) as { results?: Array<{ fecha: string; valor: number }> }
-        const last = data.results?.[data.results.length - 1]
-        if (last) {
-          setUvaValue(last.valor)
-          setUvaDate(last.fecha)
+        const data = (await res.json()) as { ok?: boolean; value?: number; date?: string }
+        if (data.ok && data.value && data.date) {
+          setUvaValue(data.value)
+          setUvaDate(data.date)
+          localStorage.setItem(UVA_CACHE_KEY, JSON.stringify({ value: data.value, date: data.date, ts: Date.now() }))
           setUvaLoading(false)
           return
         }
       }
-    } catch { /* BCRA CORS blocked, user will enter manually */ }
+    } catch { /* /api/uva unreachable — dev environment */ }
     setUvaLoading(false)
   }
 
@@ -1377,6 +1389,20 @@ function App() {
     setConfirmDeleteCategory(null)
   }
 
+  async function saveEditCategory(event: React.FormEvent, catId: string) {
+    event.preventDefault()
+    if (!editCategoryForm.name.trim()) return
+    const payload = { name: editCategoryForm.name.trim(), color: editCategoryForm.color }
+    if (isDemo) {
+      setCategories((items) => items.map((c) => (c.id === catId ? { ...c, ...payload } : c)))
+    } else {
+      const { error } = await supabase.from('categories').update(payload).eq('id', catId)
+      if (error) { setNotice(error.message); return }
+      setCategories((items) => items.map((c) => (c.id === catId ? { ...c, ...payload } : c)))
+    }
+    setEditingCategory(null)
+  }
+
   // ── Recurring expenses ────────────────────────────────────────────────────
 
   function computeNextDue(currentDue: string, frequency: RecurrenceFrequency): string {
@@ -1582,15 +1608,7 @@ function App() {
     }
   }
 
-  const balanceByPerson = profiles
-    .map((profile) => {
-      const toMe = receivable.filter((split) => split.debtor_id === profile.id).reduce((sum, split) => sum + Number(split.amount), 0)
-      const fromMe = payable.filter((split) => split.creditor_id === profile.id).reduce((sum, split) => sum + Number(split.amount), 0)
-      return { profile, toMe, fromMe, net: toMe - fromMe }
-    })
-    .filter((item) => item.profile.id !== currentUser.id && (item.toMe || item.fromMe))
-
-  const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === currentUser.id).length
+const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === currentUser.id).length
 
   if (loading) {
     return <div className="center-screen">Cargando Cuentas Claras...</div>
@@ -1808,7 +1826,7 @@ function App() {
               <select value={installmentForm.plan_type} onChange={(event) => {
                 const pt = event.target.value as PlanType
                 setInstallmentForm({ ...installmentForm, plan_type: pt, total_amount: '', uva_count: '' })
-                if (pt === 'UVA' && !uvaValue) void fetchUvaValue()
+                if (pt === 'UVA') void fetchUvaValue()
               }}>
                 <option value="ARS">ARS — Pesos fijos</option>
                 <option value="UVA">UVA — Unidad de Valor Adquisitivo</option>
@@ -1827,7 +1845,7 @@ function App() {
                   ) : (
                     <span>
                       Valor UVA no disponible.{' '}
-                      <button type="button" className="btn small ghost" onClick={() => void fetchUvaValue()}>Obtener</button>
+                      <button type="button" className="btn small ghost" onClick={() => void fetchUvaValue(true)}>Obtener</button>
                       {' '}o ingresar manualmente:
                       <input type="number" className="uva-manual-input" min="1" step="0.01" placeholder="ej. 1350" value={uvaManual} onChange={(e) => setUvaManual(e.target.value)} />
                     </span>
@@ -1864,7 +1882,7 @@ function App() {
                   : uvaValue ? <span>UVA actual: <strong>{formatARS(uvaValue)}</strong> ({uvaDate})</span>
                   : <span>
                     Sin valor UVA.{' '}
-                    <button type="button" className="btn small ghost" onClick={() => void fetchUvaValue()}>Obtener</button>
+                    <button type="button" className="btn small ghost" onClick={() => void fetchUvaValue(true)}>Obtener</button>
                     {' '}o manual:
                     <input type="number" className="uva-manual-input" min="1" step="0.01" placeholder="ej. 1350" value={uvaManual} onChange={(e) => setUvaManual(e.target.value)} />
                   </span>
@@ -2426,13 +2444,34 @@ function App() {
             {hasUvaPlans && (
               <div className="uva-global-bar">
                 {currentUva ? (
-                  <span>UVA actual: <strong>{formatARS(currentUva)}</strong> ({uvaDate ?? '—'})</span>
+                  <>
+                    <span>UVA actual: <strong>{formatARS(currentUva)}</strong> — {uvaDate ?? '—'}</span>
+                    <button className="btn small ghost" style={{ marginLeft: 'auto' }} onClick={() => void fetchUvaValue(true)} disabled={uvaLoading}>
+                      {uvaLoading ? 'Cargando…' : 'Actualizar UVA'}
+                    </button>
+                  </>
                 ) : (
                   <span className="uva-global-bar__missing">
-                    Hay planes UVA — valor UVA no cargado.
-                    <button className="btn small ghost" style={{ marginLeft: 8 }} onClick={() => void fetchUvaValue()}>
-                      {uvaLoading ? 'Cargando…' : 'Obtener'}
-                    </button>
+                    {uvaLoading
+                      ? 'Consultando valor UVA…'
+                      : 'No se pudo obtener el valor UVA automáticamente.'}
+                    {!uvaLoading && (
+                      <>
+                        <button className="btn small ghost" style={{ marginLeft: 8 }} onClick={() => void fetchUvaValue(true)}>
+                          Reintentar
+                        </button>
+                        <span style={{ marginLeft: 8 }}>o ingresar manual:</span>
+                        <input
+                          type="number"
+                          className="uva-manual-input"
+                          min="1"
+                          step="0.01"
+                          placeholder="ej. 1350"
+                          value={uvaManual}
+                          onChange={(e) => setUvaManual(e.target.value)}
+                        />
+                      </>
+                    )}
                   </span>
                 )}
               </div>
@@ -2599,80 +2638,146 @@ function App() {
   }
 
   function renderSettlement() {
+    const settlementGroupId = groups.length > 0 ? (selectedGroupId && groups.find((g) => g.id === selectedGroupId) ? selectedGroupId : groups[0]?.id) : null
     const allSplits = [...receivable, ...payable]
-    const smartSettlements = selectedGroupId ? computeSmartSettlement(selectedGroupId) : []
+    const smartSettlements = settlementGroupId ? computeSmartSettlement(settlementGroupId) : []
+    const selectedGroup = groups.find((g) => g.id === settlementGroupId)
 
     return (
       <section className="page-stack">
+        {/* Summary metrics */}
         <div className="metric-grid compact">
-          <Metric title="Cuanto me deben" value={formatARS(stats.owedToMe)} icon={ArrowUpRight} tone="success" />
-          <Metric title="Cuanto debo" value={formatARS(stats.iOwe)} icon={ArrowDownRight} tone="danger" />
+          <Metric title="Me deben (total)" value={formatARS(stats.owedToMe)} icon={ArrowUpRight} tone="success" />
+          <Metric title="Debo (total)" value={formatARS(stats.iOwe)} icon={ArrowDownRight} tone="danger" />
         </div>
 
-        {smartSettlements.length > 0 && (
-          <section className="panel">
-            <div className="panel-head">
-              <h2>Liquidación simplificada</h2>
-              <Badge tone="info">{smartSettlements.length} pago{smartSettlements.length !== 1 ? 's' : ''}</Badge>
-            </div>
-            <p className="panel-desc">Mínimo de transacciones para saldar todas las deudas del grupo:</p>
-            <div className="settlement-list">
-              {smartSettlements.map((s, i) => (
-                <div key={i} className="settlement-item">
-                  <div className="settlement-parties">
-                    <span className="settlement-from">{profileName(s.from)}</span>
-                    <span className="settlement-arrow">→</span>
-                    <span className="settlement-to">{profileName(s.to)}</span>
-                  </div>
-                  <strong className="settlement-amount">{formatARS(s.amount)}</strong>
-                </div>
-              ))}
-            </div>
-          </section>
+        {groups.length === 0 && (
+          <div className="empty">Sin grupos. La liquidación es para deudas dentro de grupos compartidos.</div>
         )}
 
-        {balanceByPerson.length > 0 && (
-          <section className="panel">
-            <div className="panel-head"><h2>Balance por persona</h2></div>
-            <div className="balance-list">
-              {balanceByPerson.map((item) => (
-                <div key={item.profile.id} className="balance-card">
-                  <div className="balance-avatar">{profileName(item.profile.id).slice(0, 1).toUpperCase()}</div>
-                  <div className="balance-info">
-                    <strong>{profileName(item.profile.id)}</strong>
-                    <span>{item.profile.email}</span>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <span className={cn('balance-net', item.net >= 0 ? 'positive' : 'negative')}>{formatARS(item.net)}</span>
-                  </div>
+        {groups.length > 0 && (
+          <>
+            {/* Group selector */}
+            <section className="panel">
+              <div className="panel-head"><h2>Grupo a liquidar</h2></div>
+              <div className="settlement-group-tabs">
+                {groups.map((g) => (
+                  <button
+                    key={g.id}
+                    className={cn('settlement-group-tab', settlementGroupId === g.id && 'active')}
+                    onClick={() => setSelectedGroupId(g.id)}
+                  >
+                    {g.name}
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            {/* Smart settlement for selected group */}
+            {selectedGroup && (
+              <section className="panel">
+                <div className="panel-head">
+                  <h2>Liquidación simplificada</h2>
+                  <Badge tone="neutral">{selectedGroup.name}</Badge>
+                  {smartSettlements.length > 0 && <Badge tone="info">{smartSettlements.length} pago{smartSettlements.length !== 1 ? 's' : ''}</Badge>}
                 </div>
-              ))}
-            </div>
-          </section>
+                {smartSettlements.length === 0 ? (
+                  <div className="empty">Sin deudas pendientes en {selectedGroup.name}.</div>
+                ) : (
+                  <>
+                    <p className="panel-desc">Mínimo de transacciones para saldar todas las deudas del grupo:</p>
+                    <div className="settlement-list">
+                      {smartSettlements.map((s, i) => (
+                        <div key={i} className="settlement-item">
+                          <div className="settlement-parties">
+                            <span className="settlement-from">{profileName(s.from)}</span>
+                            <span className="settlement-arrow">→</span>
+                            <span className="settlement-to">{profileName(s.to)}</span>
+                          </div>
+                          <strong className="settlement-amount">{formatARS(s.amount)}</strong>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </section>
+            )}
+
+            {/* Balance by person for selected group */}
+            {settlementGroupId && (() => {
+              const groupSplits = splits.filter((s) => s.group_id === settlementGroupId && s.status === 'pending')
+              const groupMembers = members.filter((m) => m.group_id === settlementGroupId)
+              const memberProfiles = groupMembers.map((m) => profiles.find((p) => p.id === m.user_id)).filter(Boolean)
+              const balances = memberProfiles.map((profile) => {
+                if (!profile) return null
+                const toMe = groupSplits.filter((s) => s.creditor_id === profile.id).reduce((sum, s) => sum + Number(s.amount), 0)
+                const fromMe = groupSplits.filter((s) => s.debtor_id === profile.id).reduce((sum, s) => sum + Number(s.amount), 0)
+                return { profile, net: toMe - fromMe }
+              }).filter(Boolean)
+              if (balances.length === 0) return null
+              return (
+                <section className="panel">
+                  <div className="panel-head"><h2>Balance del grupo</h2><Badge tone="neutral">{selectedGroup?.name}</Badge></div>
+                  <div className="balance-list">
+                    {balances.map((item) => item && (
+                      <div key={item.profile.id} className="balance-card">
+                        <div className="balance-avatar">{profileName(item.profile.id).slice(0, 1).toUpperCase()}</div>
+                        <div className="balance-info">
+                          <strong>{profileName(item.profile.id)}</strong>
+                          <span>{item.profile.email}</span>
+                        </div>
+                        <div className="balance-card-right">
+                          <span className={cn('balance-net', item.net >= 0 ? 'positive' : 'negative')}>{formatARS(item.net)}</span>
+                          <span className="balance-net-label">{item.net >= 0 ? 'le deben' : 'debe'}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )
+            })()}
+          </>
         )}
 
+        {/* All pending splits with group + expense context */}
         <section className="panel">
-          <div className="panel-head"><h2>Deudas pendientes</h2></div>
+          <div className="panel-head">
+            <h2>Todas las deudas pendientes</h2>
+            {allSplits.length > 0 && <Badge tone="warning">{allSplits.length}</Badge>}
+          </div>
           {allSplits.length === 0 ? (
             <div className="empty">Todo liquidado.</div>
           ) : (
             <div className="split-list">
-              {allSplits.map((split) => (
-                <div key={split.id} className="split-row">
-                  <div className="split-row-body">
-                    <strong>{profileName(split.debtor_id)} → {profileName(split.creditor_id)}</strong>
-                    <span>
-                      {split.shared_expense_id
-                        ? sharedExpenses.find((e) => e.id === split.shared_expense_id)?.title
-                        : 'Cuota compartida'}
-                      {' · '}{formatDateAR(split.due_on)}
-                    </span>
+              {allSplits.map((split) => {
+                const groupName = groups.find((g) => g.id === split.group_id)?.name
+                const expenseTitle = split.shared_expense_id
+                  ? sharedExpenses.find((e) => e.id === split.shared_expense_id)?.title
+                  : split.installment_id
+                    ? 'Cuota compartida'
+                    : null
+                return (
+                  <div key={split.id} className="split-row">
+                    <div className="split-row-body">
+                      <strong>{profileName(split.debtor_id)} → {profileName(split.creditor_id)}</strong>
+                      <span className="split-row-meta">
+                        {groupName && <span className="split-group-badge">{groupName}</span>}
+                        {expenseTitle && <>{expenseTitle} · </>}
+                        {formatDateAR(split.due_on)}
+                      </span>
+                    </div>
+                    <span className="split-amount">{formatARS(split.amount)}</span>
+                    <Status status={split.status} />
+                    <button
+                      className="btn small"
+                      onClick={() => markSplitPaid(split)}
+                      disabled={markingId === split.id}
+                    >
+                      <Check size={13} />{markingId === split.id ? '…' : 'Liquidar'}
+                    </button>
                   </div>
-                  <span className="split-amount">{formatARS(split.amount)}</span>
-                  <Status status={split.status} />
-                  <button className="btn small" onClick={() => markSplitPaid(split)}><Check size={13} />Liquidar</button>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </section>
@@ -2736,7 +2841,8 @@ function App() {
               {systemCategories.map((cat) => (
                 <div key={cat.id} className="cat-item">
                   <span className="cat-swatch" style={{ background: cat.color }} />
-                  <span>{cat.name}</span>
+                  <span className="cat-name">{cat.name}</span>
+                  <span className="cat-readonly">Sistema</span>
                 </div>
               ))}
             </div>
@@ -2745,24 +2851,51 @@ function App() {
             <div className="cat-list">
               {userCategories.length === 0 && <div className="empty">Sin categorías personalizadas.</div>}
               {userCategories.map((cat) => (
-                <div key={cat.id} className="cat-item">
-                  <span className="cat-swatch" style={{ background: cat.color }} />
-                  <span style={{ flex: 1 }}>{cat.name}</span>
-                  {confirmDeleteCategory === cat.id ? (
-                    <div className="tx-confirm-delete">
-                      <span>¿Eliminar?</span>
-                      <button className="btn small danger" onClick={() => void deleteCategory(cat.id)}>Sí</button>
-                      <button className="btn small" onClick={() => setConfirmDeleteCategory(null)}>No</button>
-                    </div>
+                <div key={cat.id} className="cat-item cat-item--user">
+                  {editingCategory === cat.id ? (
+                    <form className="cat-edit-form" onSubmit={(e) => void saveEditCategory(e, cat.id)}>
+                      <input
+                        type="color"
+                        value={editCategoryForm.color}
+                        onChange={(e) => setEditCategoryForm((f) => ({ ...f, color: e.target.value }))}
+                        className="color-picker"
+                      />
+                      <input
+                        value={editCategoryForm.name}
+                        onChange={(e) => setEditCategoryForm((f) => ({ ...f, name: e.target.value }))}
+                        placeholder="Nombre"
+                        required
+                        autoFocus
+                      />
+                      <button className="btn small primary" type="submit"><Check size={12} />Guardar</button>
+                      <button className="btn small" type="button" onClick={() => setEditingCategory(null)}><X size={12} /></button>
+                    </form>
                   ) : (
-                    <button className="icon-btn sm danger" onClick={() => setConfirmDeleteCategory(cat.id)}><Trash2 size={13} /></button>
+                    <>
+                      <span className="cat-swatch" style={{ background: cat.color }} />
+                      <span className="cat-name">{cat.name}</span>
+                      <div className="cat-actions">
+                        {confirmDeleteCategory === cat.id ? (
+                          <div className="tx-confirm-delete">
+                            <span>¿Eliminar?</span>
+                            <button className="btn small danger" onClick={() => void deleteCategory(cat.id)}>Sí</button>
+                            <button className="btn small" onClick={() => setConfirmDeleteCategory(null)}>No</button>
+                          </div>
+                        ) : (
+                          <>
+                            <button className="icon-btn sm" onClick={() => { setEditingCategory(cat.id); setEditCategoryForm({ name: cat.name, color: cat.color }) }} aria-label="Editar categoría"><Edit3 size={13} /></button>
+                            <button className="icon-btn sm danger" onClick={() => setConfirmDeleteCategory(cat.id)} aria-label="Eliminar categoría"><Trash2 size={13} /></button>
+                          </>
+                        )}
+                      </div>
+                    </>
                   )}
                 </div>
               ))}
             </div>
             <form onSubmit={(e) => void saveNewCategory(e)} className="cat-add-form">
-              <input value={newCategoryForm.name} onChange={(e) => setNewCategoryForm((f) => ({ ...f, name: e.target.value }))} placeholder="Nombre de categoría" required />
               <input type="color" value={newCategoryForm.color} onChange={(e) => setNewCategoryForm((f) => ({ ...f, color: e.target.value }))} className="color-picker" />
+              <input value={newCategoryForm.name} onChange={(e) => setNewCategoryForm((f) => ({ ...f, name: e.target.value }))} placeholder="Nueva categoría…" required />
               <button className="btn primary" type="submit"><Plus size={14} />Agregar</button>
             </form>
           </section>
