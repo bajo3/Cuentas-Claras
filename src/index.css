@@ -1990,4 +1990,120 @@ tr:hover td { background: var(--s2); }
   .settlement-item { flex-direction: column; align-items: flex-start; gap: 6px; }
   .invite-actions  { flex-direction: column; width: 100%; }
   .invite-actions .btn { width: 100%; justify-content: center; }
+  .uva-fetch-bar { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .inst-date-block, .inst-amount-block { flex-direction: column; }
 }
+
+/* ══════════════════════════════════════════════
+   UVA — PLAN TYPE SUPPORT
+══════════════════════════════════════════════ */
+.uva-tag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  background: var(--in-bg, #dbeafe);
+  color: var(--in-fg, #1e40af);
+  vertical-align: middle;
+  line-height: 1.5;
+}
+[data-theme="dark"] .uva-tag {
+  background: #1e3a5f;
+  color: #93c5fd;
+}
+
+/* UVA sub-line in plan summary / installment rows */
+.plan-next-uva,
+.inst-uva-sub {
+  display: block;
+  font-size: 11px;
+  color: var(--t2);
+  font-family: 'DM Mono', monospace;
+  margin-top: 1px;
+}
+
+/* Date + amount blocks in installment rows (support sub-lines) */
+.inst-date-block,
+.inst-amount-block {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.inst-date-block .inst-date,
+.inst-amount-block .inst-amount { margin: 0; }
+
+/* UVA global info bar below the summary grid */
+.uva-global-bar {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: var(--in-bg, #dbeafe);
+  color: var(--in-fg, #1e40af);
+  border-radius: 8px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+[data-theme="dark"] .uva-global-bar {
+  background: #1e3a5f;
+  color: #93c5fd;
+}
+.uva-global-bar__missing { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+
+/* UVA value bar inside forms */
+.uva-fetch-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 8px 12px;
+  background: var(--s2);
+  border: 1px solid var(--bd);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--t2);
+}
+.uva-fetch-bar strong { color: var(--t); }
+.uva-manual-input {
+  width: 110px;
+  padding: 4px 8px;
+  border: 1px solid var(--bd);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--s);
+  color: var(--t);
+  margin-left: 4px;
+}
+
+/* Edit plan warning / confirm block */
+.edit-plan-warning {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--wa-bg);
+  color: var(--wa-fg);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.edit-plan-warning--confirm {
+  background: var(--er-bg);
+  color: var(--er-fg);
+}
+[data-theme="dark"] .edit-plan-warning {
+  background: #3b2200;
+  color: #fcd34d;
+}
+[data-theme="dark"] .edit-plan-warning--confirm {
+  background: #3b0000;
+  color: #fca5a5;
+}
+.edit-plan-warning svg { flex-shrink: 0; margin-top: 1px; }

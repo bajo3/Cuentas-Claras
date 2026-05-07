@@ -53,6 +53,7 @@ import type {
   Installment,
   InstallmentPlan,
   Payment,
+  PlanType,
   Profile,
   RecurrenceFrequency,
   RecurringExpense,
@@ -121,11 +122,14 @@ const demoSplits: SharedExpenseSplit[] = [
 ]
 
 const demoPlans: InstallmentPlan[] = [
-  { id: 'plan-1', user_id: demoUser.id, group_id: 'group-home', title: 'Heladera', total_amount: 900000, installments_count: 6, installment_amount: 150000, start_date: `${ym}-10`, due_day: 10, paid_by: demoUser.id, created_at: todayISO() },
+  { id: 'plan-1', user_id: demoUser.id, group_id: 'group-home', title: 'Heladera', total_amount: 900000, installments_count: 6, installment_amount: 150000, start_date: `${ym}-10`, due_day: 10, paid_by: demoUser.id, created_at: todayISO(), plan_type: 'ARS', uva_count: null, uva_value_at_creation: null, uva_value_date: null },
+  { id: 'plan-2', user_id: demoUser.id, group_id: null, title: 'Crédito UVA Demo', total_amount: 0, installments_count: 12, installment_amount: 0, start_date: `${ym}-01`, due_day: 1, paid_by: demoUser.id, created_at: todayISO(), plan_type: 'UVA', uva_count: 500, uva_value_at_creation: 1350.5, uva_value_date: ym + '-01' },
 ]
 
 const demoInstallments: Installment[] = [
-  { id: 'inst-1', plan_id: 'plan-1', number: 1, amount: 150000, due_on: `${ym}-10`, status: 'pending', paid_at: null, created_at: todayISO() },
+  { id: 'inst-1', plan_id: 'plan-1', number: 1, amount: 150000, due_on: `${ym}-10`, status: 'pending', paid_at: null, created_at: todayISO(), uva_count: null, uva_value: null },
+  { id: 'inst-2', plan_id: 'plan-2', number: 1, amount: 675250, due_on: `${ym}-01`, status: 'paid', paid_at: todayISO(), created_at: todayISO(), uva_count: 500, uva_value: 1350.5 },
+  { id: 'inst-3', plan_id: 'plan-2', number: 2, amount: 675250, due_on: `${ym}-01`, status: 'pending', paid_at: null, created_at: todayISO(), uva_count: 500, uva_value: 1350.5 },
 ]
 
 const demoInvitations: GroupInvitation[] = [
@@ -270,7 +274,23 @@ function App() {
     group_id: '',
     split_mode: 'equal' as SplitMode,
     custom: {} as Record<string, string>,
+    plan_type: 'ARS' as PlanType,
+    uva_count: '',
   })
+  const [editingPlan, setEditingPlan] = useState<InstallmentPlan | null>(null)
+  const [editPlanForm, setEditPlanForm] = useState({
+    title: '',
+    total_amount: '',
+    installments_count: '',
+    due_day: '10',
+    start_date: todayISO(),
+    uva_count: '',
+  })
+  const [confirmRecalcPlan, setConfirmRecalcPlan] = useState(false)
+  const [uvaValue, setUvaValue] = useState<number | null>(null)
+  const [uvaDate, setUvaDate] = useState<string | null>(null)
+  const [uvaLoading, setUvaLoading] = useState(false)
+  const [uvaManual, setUvaManual] = useState('')
 
   const currentUser = profiles.find((profile) => profile.id === sessionUserId) ?? {
     ...demoUser,
@@ -411,8 +431,170 @@ function App() {
     if (error) logSupabaseError('ensure-profile', error)
   }
 
+  function getAppUrl() {
+    const envUrl = (import.meta.env.VITE_APP_URL as string | undefined)?.trim()
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    return (envUrl || origin).replace(/\/$/, '')
+  }
+
   function authRedirectUrl() {
-    return window.location.origin
+    return getAppUrl()
+  }
+
+  async function fetchUvaValue() {
+    setUvaLoading(true)
+    try {
+      const res = await fetch('/api/uva')
+      if (res.ok) {
+        const data = (await res.json()) as { value: number; date: string }
+        setUvaValue(data.value)
+        setUvaDate(data.date)
+        setUvaLoading(false)
+        return
+      }
+    } catch { /* /api/uva not available in dev */ }
+    // Fallback: try BCRA directly (works if CORS headers are present)
+    try {
+      const today = new Date()
+      const fmt = (d: Date) => d.toISOString().slice(0, 10).replace(/-/g, '')
+      const from = fmt(new Date(today.getTime() - 5 * 86_400_000))
+      const to = fmt(today)
+      const res = await fetch(`https://api.bcra.gob.ar/estadisticas/v3.0/variables/31/${from}/${to}`)
+      if (res.ok) {
+        const data = (await res.json()) as { results?: Array<{ fecha: string; valor: number }> }
+        const last = data.results?.[data.results.length - 1]
+        if (last) {
+          setUvaValue(last.valor)
+          setUvaDate(last.fecha)
+          setUvaLoading(false)
+          return
+        }
+      }
+    } catch { /* BCRA CORS blocked, user will enter manually */ }
+    setUvaLoading(false)
+  }
+
+  function openEditPlan(plan: InstallmentPlan) {
+    setEditingPlan(plan)
+    setEditPlanForm({
+      title: plan.title,
+      total_amount: String(plan.total_amount),
+      installments_count: String(plan.installments_count),
+      due_day: String(plan.due_day),
+      start_date: plan.start_date,
+      uva_count: plan.uva_count ? String(plan.uva_count) : '',
+    })
+    setConfirmRecalcPlan(false)
+  }
+
+  async function saveEditPlan(event: React.FormEvent) {
+    event.preventDefault()
+    if (!editingPlan) return
+    const plan = editingPlan
+    const title = editPlanForm.title.trim()
+    const count = Number(editPlanForm.installments_count)
+    const dueDay = Number(editPlanForm.due_day)
+    const uvaCountVal = editPlanForm.uva_count ? Number(editPlanForm.uva_count) : null
+    const total = Number(editPlanForm.total_amount)
+
+    if (!title || !Number.isFinite(count) || count <= 0 || dueDay < 1 || dueDay > 31) {
+      setNotice('Datos inválidos')
+      return
+    }
+
+    const paidInsts = installments.filter((i) => i.plan_id === plan.id && i.status === 'paid')
+    const pendingInsts = installments.filter((i) => i.plan_id === plan.id && i.status === 'pending')
+
+    if (paidInsts.length > 0 && !confirmRecalcPlan) {
+      setConfirmRecalcPlan(true)
+      return
+    }
+
+    const effectiveUvaValue = uvaValue ?? (uvaManual ? Number(uvaManual) : null)
+    const instAmount =
+      plan.plan_type === 'UVA' && uvaCountVal && effectiveUvaValue
+        ? Math.round(uvaCountVal * effectiveUvaValue * 100) / 100
+        : Math.round((total / count) * 100) / 100
+
+    const totalPendingCount = Math.max(0, count - paidInsts.length)
+
+    const buildPending = () =>
+      Array.from({ length: totalPendingCount }, (_, idx) => {
+        const instNum = paidInsts.length + idx + 1
+        const date = new Date(`${editPlanForm.start_date}T00:00:00`)
+        date.setMonth(date.getMonth() + paidInsts.length + idx)
+        date.setDate(Math.min(dueDay, 28))
+        return {
+          plan_id: plan.id,
+          number: instNum,
+          amount: instAmount,
+          due_on: todayISO(date),
+          status: 'pending' as const,
+          paid_at: null,
+          uva_count: plan.plan_type === 'UVA' ? uvaCountVal : null,
+          uva_value: plan.plan_type === 'UVA' ? effectiveUvaValue : null,
+        }
+      })
+
+    const updatedPlan: InstallmentPlan = {
+      ...plan,
+      title,
+      total_amount: plan.plan_type === 'UVA' ? instAmount * count : total,
+      installments_count: count,
+      installment_amount: instAmount,
+      start_date: editPlanForm.start_date,
+      due_day: dueDay,
+      uva_count: uvaCountVal,
+    }
+
+    if (isDemo) {
+      const newPending = buildPending().map((i) => ({ id: crypto.randomUUID(), created_at: todayISO(), ...i }))
+      setPlans((items) => items.map((p) => (p.id === plan.id ? updatedPlan : p)))
+      setInstallments((items) => [
+        ...items.filter((i) => i.plan_id !== plan.id || i.status === 'paid'),
+        ...newPending,
+      ])
+    } else {
+      const { error: planErr } = await supabase
+        .from('installment_plans')
+        .update({
+          title,
+          total_amount: updatedPlan.total_amount,
+          installments_count: count,
+          installment_amount: instAmount,
+          start_date: editPlanForm.start_date,
+          due_day: dueDay,
+          uva_count: uvaCountVal,
+        })
+        .eq('id', plan.id)
+      if (planErr) {
+        logSupabaseError('edit-plan', planErr)
+        setNotice('Error al guardar el plan')
+        return
+      }
+      for (const inst of pendingInsts) {
+        await supabase.from('installments').delete().eq('id', inst.id)
+      }
+      const toInsert = buildPending()
+      if (toInsert.length > 0) {
+        const { error: instsErr } = await supabase.from('installments').insert(toInsert)
+        if (instsErr) {
+          logSupabaseError('edit-plan-installments', instsErr)
+          setNotice('Error al recalcular cuotas')
+          return
+        }
+      }
+      const newPending = buildPending().map((i) => ({ id: crypto.randomUUID(), created_at: todayISO(), ...i }))
+      setPlans((items) => items.map((p) => (p.id === plan.id ? updatedPlan : p)))
+      setInstallments((items) => [
+        ...items.filter((i) => i.plan_id !== plan.id || i.status === 'paid'),
+        ...newPending,
+      ])
+    }
+
+    setEditingPlan(null)
+    setConfirmRecalcPlan(false)
+    setNotice('Plan actualizado')
   }
 
   function validateEmailPassword(email: string, password?: string) {
@@ -568,20 +750,28 @@ function App() {
 
   const installmentStats = useMemo(() => {
     const today = todayISO()
+    const currentUva = uvaValue ?? (uvaManual ? Number(uvaManual) : null)
     const userInstallments = installments.filter((i) => {
       const plan = plans.find((p) => p.id === i.plan_id)
       return plan?.user_id === currentUser.id || (plan?.group_id && visibleGroupIds.includes(plan.group_id))
     })
     const pending = userInstallments.filter((i) => i.status === 'pending')
-    const totalPending = pending.reduce((sum, i) => sum + Number(i.amount), 0)
+    const totalPending = pending.reduce((sum, i) => {
+      const plan = plans.find((p) => p.id === i.plan_id)
+      if (plan?.plan_type === 'UVA' && currentUva && i.uva_count) {
+        return sum + Math.round(Number(i.uva_count) * currentUva * 100) / 100
+      }
+      return sum + Number(i.amount)
+    }, 0)
     const paidThisMonth = userInstallments
       .filter((i) => i.status === 'paid' && i.paid_at?.startsWith(month))
       .reduce((sum, i) => sum + Number(i.amount), 0)
     const sortedPending = [...pending].sort((a, b) => a.due_on.localeCompare(b.due_on))
     const nextDue = sortedPending[0] ?? null
     const overdueCount = pending.filter((i) => i.due_on < today).length
-    return { totalPending, paidThisMonth, nextDue, overdueCount, pendingCount: pending.length }
-  }, [installments, plans, currentUser.id, visibleGroupIds, month])
+    const pendingUvaCuotas = pending.filter((i) => plans.find((p) => p.id === i.plan_id)?.plan_type === 'UVA').length
+    return { totalPending, paidThisMonth, nextDue, overdueCount, pendingCount: pending.length, pendingUvaCuotas }
+  }, [installments, plans, currentUser.id, visibleGroupIds, month, uvaValue, uvaManual])
 
   const chartData = categories
     .map((category) => ({
@@ -776,28 +966,39 @@ function App() {
 
   async function saveInstallmentPlan(event: React.FormEvent) {
     event.preventDefault()
-    const total = Number(installmentForm.total_amount)
+    const isUva = installmentForm.plan_type === 'UVA'
     const count = Number(installmentForm.installments_count)
     const dueDay = Number(installmentForm.due_day)
     const ownerUserId = sessionUserId ?? currentUser.id
     const normalizedGroupId = installmentForm.group_id || null
     const normalizedPaidBy = normalizedGroupId ? installmentForm.paid_by || ownerUserId : ownerUserId
-    if (
-      !installmentForm.title.trim() ||
-      !Number.isFinite(total) ||
-      !Number.isFinite(count) ||
-      !Number.isFinite(dueDay) ||
-      total <= 0 ||
-      count <= 0 ||
-      dueDay < 1 ||
-      dueDay > 31 ||
-      !normalizedPaidBy ||
-      !installmentForm.start_date
-    ) {
+    const uvaCountVal = installmentForm.uva_count ? Number(installmentForm.uva_count) : null
+    const effectiveUvaValue = uvaValue ?? (uvaManual ? Number(uvaManual) : null)
+
+    if (!installmentForm.title.trim() || !Number.isFinite(count) || !Number.isFinite(dueDay) || count <= 0 || dueDay < 1 || dueDay > 31 || !normalizedPaidBy || !installmentForm.start_date) {
       setNotice('No se pudo crear la cuota')
       return
     }
-    const installmentAmount = Math.round((total / count) * 100) / 100
+
+    let installmentAmount: number
+    let totalAmount: number
+    if (isUva) {
+      if (!uvaCountVal || !effectiveUvaValue) {
+        setNotice('Para un plan UVA se requiere la cantidad de UVA y el valor UVA actual.')
+        return
+      }
+      installmentAmount = Math.round(uvaCountVal * effectiveUvaValue * 100) / 100
+      totalAmount = installmentAmount * count
+    } else {
+      const total = Number(installmentForm.total_amount)
+      if (!Number.isFinite(total) || total <= 0) {
+        setNotice('No se pudo crear la cuota')
+        return
+      }
+      installmentAmount = Math.round((total / count) * 100) / 100
+      totalAmount = total
+    }
+
     if (!Number.isFinite(installmentAmount) || installmentAmount <= 0) {
       setNotice('No se pudo crear la cuota')
       return
@@ -815,6 +1016,8 @@ function App() {
           due_on: todayISO(date),
           status: 'pending' as const,
           paid_at: null,
+          uva_count: isUva ? uvaCountVal : null,
+          uva_value: isUva ? effectiveUvaValue : null,
         }
       })
 
@@ -824,13 +1027,17 @@ function App() {
         user_id: ownerUserId,
         group_id: normalizedGroupId,
         title: installmentForm.title.trim(),
-        total_amount: total,
+        total_amount: totalAmount,
         installments_count: count,
         installment_amount: installmentAmount,
         start_date: installmentForm.start_date,
         due_day: dueDay,
         paid_by: normalizedPaidBy,
         created_at: todayISO(),
+        plan_type: installmentForm.plan_type,
+        uva_count: isUva ? uvaCountVal : null,
+        uva_value_at_creation: isUva ? effectiveUvaValue : null,
+        uva_value_date: isUva && uvaDate ? uvaDate : null,
       }
       const createdInstallments = buildInstallments(plan.id).map((item) => ({ id: crypto.randomUUID(), created_at: todayISO(), ...item }))
       setPlans((items) => [plan, ...items])
@@ -853,12 +1060,16 @@ function App() {
         user_id: ownerUserId,
         group_id: normalizedGroupId,
         title: installmentForm.title.trim(),
-        total_amount: total,
+        total_amount: totalAmount,
         installments_count: count,
         installment_amount: installmentAmount,
         start_date: installmentForm.start_date,
         due_day: dueDay,
         paid_by: normalizedPaidBy,
+        plan_type: installmentForm.plan_type,
+        uva_count: isUva ? uvaCountVal : null,
+        uva_value_at_creation: isUva ? effectiveUvaValue : null,
+        uva_value_date: isUva && uvaDate ? uvaDate : null,
       }
       const { data, error } = await supabase
         .from('installment_plans')
@@ -897,7 +1108,7 @@ function App() {
       }
       await loadData(ownerUserId)
     }
-    setInstallmentForm({ ...installmentForm, title: '', total_amount: '', custom: {} })
+    setInstallmentForm({ ...installmentForm, title: '', total_amount: '', uva_count: '', custom: {} })
     setDialog(null)
   }
 
@@ -1593,14 +1804,98 @@ function App() {
         <Modal title="Nuevo plan de cuotas" onClose={() => setDialog(null)}>
           <form onSubmit={saveInstallmentPlan} className="form-grid">
             <label>Titulo<input value={installmentForm.title} onChange={(event) => setInstallmentForm({ ...installmentForm, title: event.target.value })} required /></label>
-            <label>Monto total<input type="number" min="1" step="0.01" value={installmentForm.total_amount} onChange={(event) => setInstallmentForm({ ...installmentForm, total_amount: event.target.value })} required /></label>
-            <label>Cantidad<input type="number" min="1" value={installmentForm.installments_count} onChange={(event) => setInstallmentForm({ ...installmentForm, installments_count: event.target.value })} required /></label>
+            <label>Tipo de plan
+              <select value={installmentForm.plan_type} onChange={(event) => {
+                const pt = event.target.value as PlanType
+                setInstallmentForm({ ...installmentForm, plan_type: pt, total_amount: '', uva_count: '' })
+                if (pt === 'UVA' && !uvaValue) void fetchUvaValue()
+              }}>
+                <option value="ARS">ARS — Pesos fijos</option>
+                <option value="UVA">UVA — Unidad de Valor Adquisitivo</option>
+              </select>
+            </label>
+            {installmentForm.plan_type === 'ARS' ? (
+              <label>Monto total<input type="number" min="1" step="0.01" value={installmentForm.total_amount} onChange={(event) => setInstallmentForm({ ...installmentForm, total_amount: event.target.value })} required /></label>
+            ) : (
+              <>
+                <label>UVA por cuota<input type="number" min="0.0001" step="0.0001" placeholder="ej. 500" value={installmentForm.uva_count} onChange={(event) => setInstallmentForm({ ...installmentForm, uva_count: event.target.value })} required /></label>
+                <div className="uva-fetch-bar">
+                  {uvaLoading ? (
+                    <span>Cargando valor UVA…</span>
+                  ) : uvaValue ? (
+                    <span>Valor UVA: <strong>{formatARS(uvaValue)}</strong> ({uvaDate}){installmentForm.uva_count && <> · Cuota est.: <strong>{formatARS(Number(installmentForm.uva_count) * uvaValue)}</strong></>}</span>
+                  ) : (
+                    <span>
+                      Valor UVA no disponible.{' '}
+                      <button type="button" className="btn small ghost" onClick={() => void fetchUvaValue()}>Obtener</button>
+                      {' '}o ingresar manualmente:
+                      <input type="number" className="uva-manual-input" min="1" step="0.01" placeholder="ej. 1350" value={uvaManual} onChange={(e) => setUvaManual(e.target.value)} />
+                    </span>
+                  )}
+                </div>
+              </>
+            )}
+            <label>Cantidad de cuotas<input type="number" min="1" value={installmentForm.installments_count} onChange={(event) => setInstallmentForm({ ...installmentForm, installments_count: event.target.value })} required /></label>
             <label>Fecha inicio<input type="date" value={installmentForm.start_date} onChange={(event) => setInstallmentForm({ ...installmentForm, start_date: event.target.value })} /></label>
             <label>Dia vencimiento<input type="number" min="1" max="31" value={installmentForm.due_day} onChange={(event) => setInstallmentForm({ ...installmentForm, due_day: event.target.value })} /></label>
             <label>Grupo opcional<select value={installmentForm.group_id} onChange={(event) => setInstallmentForm({ ...installmentForm, group_id: event.target.value, paid_by: groupMembers(event.target.value)[0]?.user_id || currentUser.id })}><option value="">Privada</option>{groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
             {installmentForm.group_id && <label>Pagado por<MemberSelect members={groupMembers(installmentForm.group_id)} value={installmentForm.paid_by} onChange={(value) => setInstallmentForm({ ...installmentForm, paid_by: value })} profileName={profileName} /></label>}
             {installmentForm.group_id && <SplitControls members={groupMembers(installmentForm.group_id).filter((member) => member.user_id !== installmentForm.paid_by)} mode={installmentForm.split_mode} custom={installmentForm.custom} setMode={(split_mode) => setInstallmentForm({ ...installmentForm, split_mode })} setCustom={(custom) => setInstallmentForm({ ...installmentForm, custom })} profileName={profileName} amount={Number(installmentForm.total_amount)} />}
             <button className="btn primary span-2" type="submit">Generar cuotas</button>
+          </form>
+        </Modal>
+      )}
+
+      {editingPlan && (
+        <Modal title={`Editar: ${editingPlan.title}`} onClose={() => { setEditingPlan(null); setConfirmRecalcPlan(false) }}>
+          <form onSubmit={saveEditPlan} className="form-grid">
+            <label className="span-2">Nombre del plan<input value={editPlanForm.title} onChange={(e) => setEditPlanForm((f) => ({ ...f, title: e.target.value }))} required /></label>
+            {editingPlan.plan_type === 'ARS' ? (
+              <label>Monto total<input type="number" min="1" step="0.01" value={editPlanForm.total_amount} onChange={(e) => setEditPlanForm((f) => ({ ...f, total_amount: e.target.value }))} required /></label>
+            ) : (
+              <label>UVA por cuota<input type="number" min="0.0001" step="0.0001" value={editPlanForm.uva_count} onChange={(e) => setEditPlanForm((f) => ({ ...f, uva_count: e.target.value }))} /></label>
+            )}
+            <label>Cantidad de cuotas<input type="number" min="1" value={editPlanForm.installments_count} onChange={(e) => setEditPlanForm((f) => ({ ...f, installments_count: e.target.value }))} required /></label>
+            <label>Fecha inicio<input type="date" value={editPlanForm.start_date} onChange={(e) => setEditPlanForm((f) => ({ ...f, start_date: e.target.value }))} /></label>
+            <label>Dia vencimiento<input type="number" min="1" max="31" value={editPlanForm.due_day} onChange={(e) => setEditPlanForm((f) => ({ ...f, due_day: e.target.value }))} /></label>
+            {editingPlan.plan_type === 'UVA' && (
+              <div className="uva-fetch-bar span-2">
+                {uvaLoading ? <span>Cargando…</span>
+                  : uvaValue ? <span>UVA actual: <strong>{formatARS(uvaValue)}</strong> ({uvaDate})</span>
+                  : <span>
+                    Sin valor UVA.{' '}
+                    <button type="button" className="btn small ghost" onClick={() => void fetchUvaValue()}>Obtener</button>
+                    {' '}o manual:
+                    <input type="number" className="uva-manual-input" min="1" step="0.01" placeholder="ej. 1350" value={uvaManual} onChange={(e) => setUvaManual(e.target.value)} />
+                  </span>
+                }
+              </div>
+            )}
+            {(() => {
+              const paidCount = installments.filter((i) => i.plan_id === editingPlan.id && i.status === 'paid').length
+              if (paidCount === 0) return null
+              return (
+                <div className={cn('edit-plan-warning span-2', confirmRecalcPlan && 'edit-plan-warning--confirm')}>
+                  {confirmRecalcPlan ? (
+                    <>
+                      <AlertCircle size={14} />
+                      <span>Hay {paidCount} cuota{paidCount !== 1 ? 's' : ''} pagada{paidCount !== 1 ? 's' : ''} que se conservarán. Las pendientes se recalcularán. ¿Confirmar?</span>
+                    </>
+                  ) : (
+                    <>
+                      <AlertCircle size={14} />
+                      <span>{paidCount} cuota{paidCount !== 1 ? 's' : ''} pagada{paidCount !== 1 ? 's' : ''} — al guardar, solo se recalcularán las pendientes.</span>
+                    </>
+                  )}
+                </div>
+              )
+            })()}
+            <button className="btn primary span-2" type="submit">
+              {confirmRecalcPlan ? 'Confirmar y recalcular' : 'Guardar cambios'}
+            </button>
+            {confirmRecalcPlan && (
+              <button type="button" className="btn span-2" onClick={() => setConfirmRecalcPlan(false)}>Cancelar</button>
+            )}
           </form>
         </Modal>
       )}
@@ -2063,17 +2358,25 @@ function App() {
 
   function renderInstallments() {
     const today = todayISO()
+    const currentUva = uvaValue ?? (uvaManual ? Number(uvaManual) : null)
     const userPlans = plans.filter((p) => p.user_id === currentUser.id || (p.group_id && visibleGroupIds.includes(p.group_id)))
     const allUserInsts = installments.filter((i) => userPlans.some((p) => p.id === i.plan_id))
     const totalFinanciado = userPlans.reduce((s, p) => s + Number(p.total_amount), 0)
     const totalPagado = allUserInsts.filter((i) => i.status === 'paid').reduce((s, i) => s + Number(i.amount), 0)
-    const totalPendiente = allUserInsts.filter((i) => i.status === 'pending').reduce((s, i) => s + Number(i.amount), 0)
+    const totalPendiente = allUserInsts.filter((i) => i.status === 'pending').reduce((s, i) => {
+      const plan = userPlans.find((p) => p.id === i.plan_id)
+      if (plan?.plan_type === 'UVA' && currentUva && i.uva_count) {
+        return s + Math.round(Number(i.uva_count) * currentUva * 100) / 100
+      }
+      return s + Number(i.amount)
+    }, 0)
     const globalPaidCount = allUserInsts.filter((i) => i.status === 'paid').length
     const globalPendingCount = allUserInsts.filter((i) => i.status === 'pending').length
     const globalOverdueCount = allUserInsts.filter((i) => i.status === 'pending' && i.due_on < today).length
     const nextInstGlobal = allUserInsts.filter((i) => i.status === 'pending').sort((a, b) => a.due_on.localeCompare(b.due_on))[0] ?? null
     const totalMonths = userPlans.reduce((s, p) => s + p.installments_count, 0)
     const avgMonthly = totalMonths > 0 ? totalFinanciado / totalMonths : 0
+    const hasUvaPlans = userPlans.some((p) => p.plan_type === 'UVA')
 
     return (
       <section className="page-stack">
@@ -2101,7 +2404,10 @@ function App() {
               <div className="inst-summary-card warning">
                 <span className="inst-summary-label">Pendiente</span>
                 <strong className="inst-summary-value">{formatARS(totalPendiente)}</strong>
-                <span className="inst-summary-sub">{globalPendingCount} cuota{globalPendingCount !== 1 ? 's' : ''}</span>
+                <span className="inst-summary-sub">
+                  {globalPendingCount} cuota{globalPendingCount !== 1 ? 's' : ''}
+                  {hasUvaPlans && currentUva && ' · incl. UVA'}
+                </span>
               </div>
               {nextInstGlobal ? (
                 <div className="inst-summary-card info">
@@ -2117,6 +2423,20 @@ function App() {
                 </div>
               )}
             </div>
+            {hasUvaPlans && (
+              <div className="uva-global-bar">
+                {currentUva ? (
+                  <span>UVA actual: <strong>{formatARS(currentUva)}</strong> ({uvaDate ?? '—'})</span>
+                ) : (
+                  <span className="uva-global-bar__missing">
+                    Hay planes UVA — valor UVA no cargado.
+                    <button className="btn small ghost" style={{ marginLeft: 8 }} onClick={() => void fetchUvaValue()}>
+                      {uvaLoading ? 'Cargando…' : 'Obtener'}
+                    </button>
+                  </span>
+                )}
+              </div>
+            )}
           </section>
         )}
 
@@ -2125,11 +2445,18 @@ function App() {
         ) : (
           <div className="plan-stack">
             {plans.map((plan) => {
+              const isUva = plan.plan_type === 'UVA'
               const planInstallments = installments.filter((i) => i.plan_id === plan.id).sort((a, b) => a.number - b.number)
               const paidCount = planInstallments.filter((i) => i.status === 'paid').length
               const pendingList = planInstallments.filter((i) => i.status === 'pending')
-              const nextInst = pendingList.sort((a, b) => a.due_on.localeCompare(b.due_on))[0] ?? null
-              const totalPending = pendingList.reduce((sum, i) => sum + Number(i.amount), 0)
+              const nextInst = [...pendingList].sort((a, b) => a.due_on.localeCompare(b.due_on))[0] ?? null
+              // For UVA: use current UVA value if available, else stored estimate
+              const uvaCurrent = currentUva ?? null
+              const totalPending = pendingList.reduce((sum, i) => {
+                if (isUva && uvaCurrent && i.uva_count) return sum + Math.round(Number(i.uva_count) * uvaCurrent * 100) / 100
+                return sum + Number(i.amount)
+              }, 0)
+              const totalUvaPendingCuotas = isUva && plan.uva_count ? pendingList.length * Number(plan.uva_count) : 0
               const overdueInPlan = pendingList.filter((i) => i.due_on < today).length
               const allPaid = paidCount === planInstallments.length && planInstallments.length > 0
               const progress = planInstallments.length > 0 ? (paidCount / planInstallments.length) * 100 : 0
@@ -2139,16 +2466,29 @@ function App() {
               const planStatusTone = allPaid ? 'success' : overdueInPlan > 0 ? 'danger' : 'neutral'
               const planStatusLabel = allPaid ? 'Completada' : overdueInPlan > 0 ? `${overdueInPlan} vencida${overdueInPlan > 1 ? 's' : ''}` : 'Al dia'
 
+              // Next installment amount in ARS (for UVA: recalculate with current value if available)
+              const nextInstArs = nextInst
+                ? isUva && uvaCurrent && nextInst.uva_count
+                  ? Math.round(Number(nextInst.uva_count) * uvaCurrent * 100) / 100
+                  : Number(nextInst.amount)
+                : 0
+
               return (
                 <div key={plan.id} className="plan-card">
                   {/* Header */}
                   <div className="plan-card-head">
                     <div className="plan-icon"><CreditCard size={18} /></div>
                     <div className="plan-info">
-                      <strong>{plan.title}</strong>
+                      <strong>
+                        {plan.title}
+                        {isUva && <span className="uva-tag">UVA</span>}
+                      </strong>
                       <span>{plan.group_id ? groups.find((g) => g.id === plan.group_id)?.name : 'Privada'}</span>
                     </div>
                     <Badge tone={planStatusTone}>{planStatusLabel}</Badge>
+                    <button className="icon-btn sm" onClick={() => openEditPlan(plan)} aria-label="Editar plan">
+                      <Edit3 size={14} />
+                    </button>
                     <button
                       className="icon-btn sm"
                       onClick={() => togglePlan(plan.id)}
@@ -2168,7 +2508,10 @@ function App() {
                     {nextInst ? (
                       <div className="plan-next-payment">
                         <span className="plan-next-label">Próximo pago</span>
-                        <strong className="plan-next-amount">{formatARS(nextInst.amount)}</strong>
+                        <strong className="plan-next-amount">{formatARS(nextInstArs)}</strong>
+                        {isUva && nextInst.uva_count && (
+                          <span className="plan-next-uva">{Number(nextInst.uva_count).toLocaleString('es-AR')} UVA{uvaCurrent ? ` · $${uvaCurrent.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : ''}</span>
+                        )}
                         <span className="plan-next-date">vence {formatDateAR(nextInst.due_on)}</span>
                       </div>
                     ) : allPaid ? (
@@ -2178,6 +2521,7 @@ function App() {
                       <span className="plan-summary-text">
                         {paidCount}/{planInstallments.length} pagadas
                         {totalPending > 0 ? ` · Pendiente: ${formatARS(totalPending)}` : ''}
+                        {isUva && totalUvaPendingCuotas > 0 ? ` (${totalUvaPendingCuotas.toLocaleString('es-AR')} UVA)` : ''}
                       </span>
                       <div className="plan-footer-actions">
                         {groups.length > 0 && !allPaid && (
@@ -2201,13 +2545,26 @@ function App() {
                     <div className="inst-list inst-list--expanded">
                       {planInstallments.map((inst) => {
                         const isOverdue = inst.status === 'pending' && inst.due_on < today
+                        const instArs = isUva && uvaCurrent && inst.uva_count
+                          ? Math.round(Number(inst.uva_count) * uvaCurrent * 100) / 100
+                          : Number(inst.amount)
                         return (
                           <div key={inst.id} className="inst-row">
                             <span className={cn('inst-num', inst.status === 'paid' && 'paid', isOverdue && 'overdue')}>
                               {inst.number}
                             </span>
-                            <span className="inst-date">{formatDateAR(inst.due_on)}</span>
-                            <span className="inst-amount">{formatARS(inst.amount)}</span>
+                            <div className="inst-date-block">
+                              <span className="inst-date">{formatDateAR(inst.due_on)}</span>
+                              {isUva && inst.uva_count && (
+                                <span className="inst-uva-sub">{Number(inst.uva_count).toLocaleString('es-AR')} UVA</span>
+                              )}
+                            </div>
+                            <div className="inst-amount-block">
+                              <span className="inst-amount">{formatARS(instArs)}</span>
+                              {isUva && uvaCurrent && inst.uva_value && Number(inst.uva_value) !== uvaCurrent && (
+                                <span className="inst-uva-sub">est. al crear</span>
+                              )}
+                            </div>
                             {inst.status === 'paid' ? (
                               <Badge tone="success">Pagada</Badge>
                             ) : isOverdue ? (

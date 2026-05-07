@@ -88,6 +88,10 @@ export type InstallmentPlan = {
   due_day: number
   paid_by: string
   created_at: string
+  plan_type: PlanType
+  uva_count: number | null
+  uva_value_at_creation: number | null
+  uva_value_date: string | null
 }
 
 export type Installment = {
@@ -99,6 +103,8 @@ export type Installment = {
   status: SplitStatus
   paid_at: string | null
   created_at: string
+  uva_count: number | null
+  uva_value: number | null
 }
 
 export type Payment = {
@@ -111,6 +117,7 @@ export type Payment = {
   notes: string | null
 }
 
+export type PlanType = 'ARS' | 'UVA'
 export type InvitationStatus = 'pending' | 'accepted' | 'declined' | 'cancelled'
 export type NotificationType = 'invitation' | 'payment' | 'overdue' | 'group_event'
 export type RecurrenceFrequency = 'weekly' | 'biweekly' | 'monthly' | 'annual'

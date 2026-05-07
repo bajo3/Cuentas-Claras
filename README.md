@@ -49,18 +49,36 @@ Las migraciones crean:
 
 Tambien activan RLS para que los gastos privados solo sean visibles por su usuario y los datos de grupo solo por miembros. La tabla `profiles` se crea automaticamente desde `auth.users` con `email`, `full_name`, `avatar_url`, `created_at` y `updated_at`.
 
-## Auth URLs
+## Auth URLs y URL de produccion
+
+### Variable de entorno
+
+Agrega `VITE_APP_URL` a tu `.env` apuntando a la URL publica de tu deploy:
+
+```bash
+VITE_APP_URL=https://tu-proyecto.vercel.app
+```
+
+La app usa esta variable en todos los redirects de Auth (confirmacion de email, recuperacion de contrasena, Google OAuth). Si no esta definida, cae a `window.location.origin` — correcto para desarrollo local pero incorrecto en produccion si la URL no coincide con la configurada en Supabase.
+
+En Vercel: Settings > Environment Variables > agregar `VITE_APP_URL` con la URL de produccion.
+
+### Supabase URL Configuration
 
 En Supabase Dashboard > Authentication > URL Configuration:
 
-- Site URL local sugerida: `http://localhost:5173`
-- Additional Redirect URLs:
-  - `http://localhost:5173`
-  - `http://127.0.0.1:5173`
-  - `http://127.0.0.1:5174`
-  - tu URL de Vercel cuando deployes
+- **Site URL:** `https://tu-proyecto.vercel.app`
+- **Additional Redirect URLs** (una por linea):
+  ```
+  https://tu-proyecto.vercel.app/**
+  http://localhost:5173/**
+  http://127.0.0.1:5173/**
+  http://127.0.0.1:5174/**
+  http://127.0.0.1:5175/**
+  http://127.0.0.1:5177/**
+  ```
 
-Vite puede cambiar de puerto si el anterior esta ocupado. Si aparece otra URL en consola, agregala tambien en Supabase Auth Redirect URLs.
+Vite puede cambiar de puerto si el anterior esta ocupado. Si aparece otra URL en consola, agregala tambien.
 
 ## Recuperacion de contrasena
 
