@@ -14,7 +14,6 @@ import {
   DollarSign,
   Download,
   Edit3,
-  Filter,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -2029,70 +2028,129 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
   }
 
   function renderMovements() {
+    const monthIncome = monthTransactions.filter((tx) => tx.type === 'income').reduce((s, tx) => s + Number(tx.amount), 0)
+    const monthExpense = monthTransactions.filter((tx) => tx.type === 'expense').reduce((s, tx) => s + Number(tx.amount), 0)
+    const monthBalance = monthIncome - monthExpense
+
+    // Group filtered transactions by date (descending)
+    const txByDate = filteredTransactions.reduce<Record<string, typeof filteredTransactions>>((acc, tx) => {
+      if (!acc[tx.occurred_on]) acc[tx.occurred_on] = []
+      acc[tx.occurred_on].push(tx)
+      return acc
+    }, {})
+    const sortedDates = Object.keys(txByDate).sort((a, b) => b.localeCompare(a))
+
+    const todayStr = todayISO()
+    const yesterdayStr = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return todayISO(d) })()
+    const dateLabel = (date: string) => {
+      if (date === todayStr) return 'Hoy'
+      if (date === yesterdayStr) return 'Ayer'
+      return formatDateAR(date)
+    }
+
     return (
       <section className="page-stack">
+        {/* Monthly summary */}
+        <div className="metric-grid compact">
+          <Metric title="Ingresos del mes" value={formatARS(monthIncome)} icon={TrendingUp} tone="success" />
+          <Metric title="Gastos del mes" value={formatARS(monthExpense)} icon={TrendingDown} tone="danger" />
+          <Metric title="Balance" value={formatARS(monthBalance)} icon={monthBalance >= 0 ? TrendingUp : TrendingDown} tone={monthBalance >= 0 ? 'success' : 'danger'} />
+          <Metric title="Movimientos" value={String(monthTransactions.length)} icon={Activity} tone="neutral" />
+        </div>
+
+        {/* Filter bar */}
         <div className="actions-row tx-filter-bar">
+          <div className="tx-search-wrap">
+            <Search size={14} className="tx-search-icon" />
+            <input
+              type="text"
+              className="tx-search-input"
+              placeholder="Buscar descripción…"
+              value={txSearch}
+              onChange={(e) => setTxSearch(e.target.value)}
+            />
+            {txSearch && <button className="tx-search-clear icon-btn sm" onClick={() => setTxSearch('')}><X size={12} /></button>}
+          </div>
           <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value as 'all' | TransactionType)}>
             <option value="all">Todos</option>
             <option value="income">Ingresos</option>
             <option value="expense">Gastos</option>
           </select>
           <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
-            <option value="all">Todas las cats.</option>
+            <option value="all">Categoría</option>
             {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
           </select>
           <button className="btn primary push-right" onClick={() => { setConfirmDeleteTx(null); openTransaction() }}><Plus size={16} />Nuevo</button>
         </div>
-        <section className="panel">
-          {filteredTransactions.length === 0 ? (
-            <div className="empty">No hay movimientos para estos filtros.</div>
-          ) : (
-            <div className="tx-list">
-              {filteredTransactions.map((tx) => {
-                const cat = categories.find((c) => c.id === tx.category_id)
-                const isConfirming = confirmDeleteTx === tx.id
-                return (
-                  <div key={tx.id} className={cn('tx-row', isConfirming && 'confirming')}>
-                    <div className="tx-icon" style={cat?.color ? { background: `${cat.color}18`, color: cat.color } : undefined}>
-                      {tx.type === 'income' ? <ArrowUpRight size={18} /> : <ArrowDownRight size={18} />}
-                    </div>
-                    <div className="tx-body">
-                      <div className="tx-title-row">
-                        <span className="tx-title">{tx.title}</span>
-                        <span className={cn('tx-amount', tx.type)}>
-                          {tx.type === 'income' ? '+' : '-'}{formatARS(tx.amount)}
-                        </span>
-                      </div>
-                      <div className="tx-tags">
-                        {cat && <span className="tx-cat-dot" style={{ background: cat.color }} />}
-                        <span className="tx-date">{formatDateAR(tx.occurred_on)}</span>
-                        {cat && <span className="tx-meta">{cat.name}</span>}
-                        <span className={cn('badge', tx.type === 'income' ? 'success' : 'neutral')} style={{ fontSize: 10, padding: '1px 7px', marginLeft: 'auto' }}>
-                          {tx.type === 'income' ? 'Ingreso' : 'Gasto'}
-                        </span>
-                      </div>
-                      {isConfirming ? (
-                        <div className="tx-confirm-delete" style={{ marginTop: 8 }}>
-                          <span>¿Eliminar?</span>
-                          <button className="btn small danger" onClick={() => { void deleteTransaction(tx.id); setConfirmDeleteTx(null) }}>Sí</button>
-                          <button className="btn small" onClick={() => setConfirmDeleteTx(null)}>No</button>
-                        </div>
-                      ) : (
-                        <div className="tx-actions">
-                          <button className="btn small ghost" onClick={() => openTransaction(tx)}><Edit3 size={12} />Editar</button>
-                          {tx.type === 'expense' && groups.length > 0 && (
-                            <button className="btn small ghost" onClick={() => openConvertToShared(tx)}><Users size={12} />Compartir</button>
-                          )}
-                          <button className="btn small ghost danger" onClick={() => setConfirmDeleteTx(tx.id)}><Trash2 size={12} /></button>
-                        </div>
-                      )}
-                    </div>
+
+        {filteredTransactions.length === 0 ? (
+          <div className="empty" style={{ flexDirection: 'column', gap: 12, padding: '32px 16px' }}>
+            <p style={{ marginBottom: 4 }}>No hay movimientos para estos filtros.</p>
+            <button className="btn primary" onClick={() => { setConfirmDeleteTx(null); openTransaction() }}><Plus size={16} />Agregar movimiento</button>
+          </div>
+        ) : (
+          <div className="tx-grouped-list">
+            {sortedDates.map((date) => {
+              const dayTxs = txByDate[date]
+              const dayIncome = dayTxs.filter((t) => t.type === 'income').reduce((s, t) => s + Number(t.amount), 0)
+              const dayExpense = dayTxs.filter((t) => t.type === 'expense').reduce((s, t) => s + Number(t.amount), 0)
+              return (
+                <div key={date} className="tx-date-group">
+                  <div className="tx-date-header">
+                    <span className="tx-date-label">{dateLabel(date)}</span>
+                    <span className="tx-date-summary">
+                      {dayIncome > 0 && <span className="tx-date-income">+{formatARS(dayIncome)}</span>}
+                      {dayExpense > 0 && <span className="tx-date-expense">-{formatARS(dayExpense)}</span>}
+                    </span>
                   </div>
-                )
-              })}
-            </div>
-          )}
-        </section>
+                  <div className="tx-list">
+                    {dayTxs.map((tx) => {
+                      const cat = categories.find((c) => c.id === tx.category_id)
+                      const isConfirming = confirmDeleteTx === tx.id
+                      return (
+                        <div key={tx.id} className={cn('tx-row', isConfirming && 'confirming')}>
+                          <div className="tx-icon" style={cat?.color ? { background: `${cat.color}18`, color: cat.color } : undefined}>
+                            {tx.type === 'income' ? <ArrowUpRight size={18} /> : <ArrowDownRight size={18} />}
+                          </div>
+                          <div className="tx-body">
+                            <div className="tx-title-row">
+                              <span className="tx-title">{tx.title}</span>
+                              <span className={cn('tx-amount', tx.type)}>
+                                {tx.type === 'income' ? '+' : '-'}{formatARS(tx.amount)}
+                              </span>
+                            </div>
+                            <div className="tx-tags">
+                              {cat && <span className="tx-cat-dot" style={{ background: cat.color }} />}
+                              {cat && <span className="tx-meta">{cat.name}</span>}
+                              <span className={cn('badge', tx.type === 'income' ? 'success' : 'neutral')} style={{ fontSize: 10, padding: '1px 7px', marginLeft: 'auto' }}>
+                                {tx.type === 'income' ? 'Ingreso' : 'Gasto'}
+                              </span>
+                            </div>
+                            {isConfirming ? (
+                              <div className="tx-confirm-delete" style={{ marginTop: 8 }}>
+                                <span>¿Eliminar?</span>
+                                <button className="btn small danger" onClick={() => { void deleteTransaction(tx.id); setConfirmDeleteTx(null) }}>Sí</button>
+                                <button className="btn small" onClick={() => setConfirmDeleteTx(null)}>No</button>
+                              </div>
+                            ) : (
+                              <div className="tx-actions">
+                                <button className="btn small ghost" onClick={() => openTransaction(tx)}><Edit3 size={12} />Editar</button>
+                                {tx.type === 'expense' && groups.length > 0 && (
+                                  <button className="btn small ghost" onClick={() => openConvertToShared(tx)}><Users size={12} />Compartir</button>
+                                )}
+                                <button className="btn small ghost danger" onClick={() => setConfirmDeleteTx(tx.id)}><Trash2 size={12} /></button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </section>
     )
   }
@@ -2386,6 +2444,18 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
     const today = todayISO()
     const currentUva = uvaValue ?? (uvaManual ? Number(uvaManual) : null)
     const userPlans = plans.filter((p) => p.user_id === currentUser.id || (p.group_id && visibleGroupIds.includes(p.group_id)))
+
+    const filteredPlans = userPlans.filter((plan) => {
+      const planInsts = installments.filter((i) => i.plan_id === plan.id)
+      switch (planFilter) {
+        case 'pending': return planInsts.some((i) => i.status === 'pending')
+        case 'overdue': return planInsts.some((i) => i.status === 'pending' && i.due_on < today)
+        case 'paid': return planInsts.length > 0 && planInsts.every((i) => i.status === 'paid')
+        case 'uva': return plan.plan_type === 'UVA'
+        case 'ars': return plan.plan_type === 'ARS'
+        default: return true
+      }
+    })
     const allUserInsts = installments.filter((i) => userPlans.some((p) => p.id === i.plan_id))
     const totalFinanciado = userPlans.reduce((s, p) => s + Number(p.total_amount), 0)
     const totalPagado = allUserInsts.filter((i) => i.status === 'paid').reduce((s, i) => s + Number(i.amount), 0)
@@ -2409,6 +2479,20 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
         <div className="actions-row">
           <button className="btn primary" onClick={() => setDialog('installment')}><Plus size={16} />Nuevo plan</button>
         </div>
+
+        {userPlans.length > 0 && (
+          <div className="plan-filter-bar">
+            {(['all', 'pending', 'overdue', 'paid', 'uva', 'ars'] as const).map((f) => (
+              <button
+                key={f}
+                className={cn('plan-filter-pill', planFilter === f && 'active')}
+                onClick={() => setPlanFilter(f)}
+              >
+                {f === 'all' ? 'Todos' : f === 'pending' ? 'Pendientes' : f === 'overdue' ? 'Vencidos' : f === 'paid' ? 'Pagados' : f.toUpperCase()}
+              </button>
+            ))}
+          </div>
+        )}
 
         {userPlans.length > 0 && (
           <section className="panel">
@@ -2487,11 +2571,13 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
           </section>
         )}
 
-        {plans.length === 0 ? (
+        {userPlans.length === 0 ? (
           <div className="empty">No hay planes de cuotas. Crea uno para empezar.</div>
+        ) : filteredPlans.length === 0 ? (
+          <div className="empty">Sin planes para este filtro.</div>
         ) : (
           <div className="plan-stack">
-            {plans.map((plan) => {
+            {filteredPlans.map((plan) => {
               const isUva = plan.plan_type === 'UVA'
               const planInstallments = installments.filter((i) => i.plan_id === plan.id).sort((a, b) => a.number - b.number)
               const paidCount = planInstallments.filter((i) => i.status === 'paid').length

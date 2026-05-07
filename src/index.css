@@ -2249,3 +2249,110 @@ tr:hover td { background: var(--s2); }
   border-color: var(--bd);
 }
 [data-theme="dark"] .cat-item--user { background: var(--s2); }
+
+/* ══════════════════════════════════════════════
+   MOVEMENTS — SEARCH BAR + DATE GROUPS
+══════════════════════════════════════════════ */
+.tx-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 140px;
+  max-width: 260px;
+}
+.tx-search-icon {
+  position: absolute;
+  left: 9px;
+  color: var(--t3);
+  pointer-events: none;
+}
+.tx-search-input {
+  width: 100%;
+  padding: 7px 32px 7px 30px;
+  border: 1px solid var(--bd);
+  border-radius: var(--r2);
+  background: var(--s);
+  color: var(--t);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color .15s;
+}
+.tx-search-input:focus { border-color: var(--cp); }
+.tx-search-clear {
+  position: absolute;
+  right: 6px;
+}
+.tx-grouped-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.tx-date-group {
+  background: var(--s);
+  border: 1px solid var(--bd);
+  border-radius: var(--r3);
+  overflow: hidden;
+  box-shadow: var(--sh0);
+}
+.tx-date-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px 7px;
+  background: var(--s2);
+  border-bottom: 1px solid var(--bd);
+}
+.tx-date-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--t2);
+  text-transform: uppercase;
+  letter-spacing: .06em;
+}
+.tx-date-summary {
+  display: flex;
+  gap: 10px;
+  font-size: 12px;
+  font-family: 'DM Mono', monospace;
+}
+.tx-date-income { color: var(--ok); font-weight: 600; }
+.tx-date-expense { color: var(--er); font-weight: 600; }
+
+/* Flat list inside a date group — no outer panel */
+.tx-date-group .tx-list { padding: 0; border: none; box-shadow: none; }
+.tx-date-group .tx-row { border-radius: 0; border-left: none; border-right: none; border-top: none; }
+.tx-date-group .tx-row:last-child { border-bottom: none; }
+
+[data-theme="dark"] .tx-date-header { background: rgba(255,255,255,.04); }
+[data-theme="dark"] .tx-search-input { background: var(--s); border-color: var(--bd); }
+
+/* ══════════════════════════════════════════════
+   INSTALLMENTS — FILTER PILLS
+══════════════════════════════════════════════ */
+.plan-filter-bar {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding: 2px 0;
+}
+.plan-filter-pill {
+  padding: 5px 13px;
+  border: 1px solid var(--bd);
+  border-radius: var(--rf);
+  background: var(--s);
+  color: var(--t2);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .13s, color .13s, border-color .13s;
+  white-space: nowrap;
+}
+.plan-filter-pill:hover { background: var(--s2); color: var(--t); }
+.plan-filter-pill.active {
+  background: var(--cp);
+  border-color: var(--cp);
+  color: #fff;
+}
+[data-theme="dark"] .plan-filter-pill { background: var(--s2); border-color: var(--bd); }
