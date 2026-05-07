@@ -1,4 +1,5 @@
 import {
+  Activity,
   AlertCircle,
   ArrowDownRight,
   ArrowUpRight,
@@ -13,6 +14,7 @@ import {
   DollarSign,
   Download,
   Edit3,
+  Filter,
   LayoutDashboard,
   LogOut,
   Menu,
@@ -21,9 +23,12 @@ import {
   Receipt,
   Repeat,
   RotateCcw,
+  Search,
   Settings,
   Sun,
   Trash2,
+  TrendingDown,
+  TrendingUp,
   UserPlus,
   Users,
   WalletCards,
@@ -200,6 +205,8 @@ function App() {
   const [month, setMonth] = useState(ym)
   const [typeFilter, setTypeFilter] = useState<'all' | TransactionType>('all')
   const [categoryFilter, setCategoryFilter] = useState('all')
+  const [txSearch, setTxSearch] = useState('')
+  const [planFilter, setPlanFilter] = useState<'all' | 'pending' | 'overdue' | 'paid' | 'uva' | 'ars'>('all')
 
   const [profiles, setProfiles] = useState<Profile[]>(demoProfiles)
   const [categories, setCategories] = useState<Category[]>(demoCategories)
@@ -739,7 +746,8 @@ function App() {
   const filteredTransactions = monthTransactions.filter((tx) => {
     const typeOk = typeFilter === 'all' || tx.type === typeFilter
     const categoryOk = categoryFilter === 'all' || tx.category_id === categoryFilter
-    return typeOk && categoryOk
+    const searchOk = !txSearch.trim() || tx.title.toLowerCase().includes(txSearch.trim().toLowerCase())
+    return typeOk && categoryOk && searchOk
   })
   const visibleSplits = splits.filter((split) => visibleGroupIds.includes(split.group_id))
   const receivable = visibleSplits.filter((split) => split.creditor_id === currentUser.id && split.status === 'pending')

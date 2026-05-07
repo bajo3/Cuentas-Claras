@@ -1,4 +1,4 @@
-// Vercel Edge Function — GET /api/uva
+// Vercel Serverless Function — GET /api/uva
 // Proxies BCRA (Banco Central de la República Argentina) UVA value
 // to avoid browser CORS restrictions.
 //
@@ -8,19 +8,18 @@
 //   Date format: YYYY-MM-DD  ← with dashes
 //
 // Response: { ok: true, value: number, date: "YYYY-MM-DD", source: "BCRA" }
-//        or { ok: false, error: string }
-
-export const config = { runtime: 'edge' }
+//        or { ok: false, error: string, source: "BCRA" }
+//
+// Note: always returns HTTP 200 so clients always get JSON (never Vercel 502).
 
 export default async function handler(): Promise<Response> {
-  const corsHeaders = {
+  const headers = {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': '*',
-  }
-  const cacheHeaders = {
-    ...corsHeaders,
     'Cache-Control': 'public, s-maxage=3600, stale-while-revalidate=7200',
   }
+
+  const ok = (payload: object) => new Response(JSON.stringify(payload), { status: 200, headers })
 
   try {
     // Request last 7 days to cover weekends + holidays when BCRA doesn't publish
@@ -32,49 +31,44 @@ export default async function handler(): Promise<Response> {
     // Variable 31 = UVA (Unidad de Valor Adquisitivo)
     const url = `https://api.bcra.gob.ar/estadisticas/v3.0/variables/31/${from}/${to}`
 
-    const res = await fetch(url, {
-      headers: {
-        Accept: 'application/json',
-        'User-Agent': 'CuentasClaras/1.0',
-      },
-    })
-
-    if (!res.ok) {
-      return new Response(
-        JSON.stringify({ ok: false, error: `BCRA API responded ${res.status}`, url }),
-        { status: 502, headers: corsHeaders },
-      )
+    let res: Response
+    try {
+      res = await fetch(url, {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'Mozilla/5.0 (compatible; CuentasClaras/1.0)',
+        },
+        // 8-second timeout so we don't hang the serverless invocation
+        signal: AbortSignal.timeout(8000),
+      })
+    } catch (fetchErr) {
+      const msg = fetchErr instanceof Error ? fetchErr.message : 'fetch failed'
+      return ok({ ok: false, error: `BCRA unreachable: ${msg}`, source: 'BCRA' })
     }
 
-    const data = (await res.json()) as {
-      results?: Array<{ fecha: string; valor: number }>
+    if (!res.ok) {
+      return ok({ ok: false, error: `BCRA responded ${res.status}`, source: 'BCRA' })
+    }
+
+    let data: { results?: Array<{ fecha: string; valor: number }> }
+    try {
+      data = (await res.json()) as { results?: Array<{ fecha: string; valor: number }> }
+    } catch {
+      return ok({ ok: false, error: 'BCRA response is not valid JSON', source: 'BCRA' })
     }
 
     const results = data.results
     if (!results?.length) {
-      return new Response(
-        JSON.stringify({ ok: false, error: 'No UVA data in range', from, to }),
-        { status: 404, headers: corsHeaders },
-      )
+      return ok({ ok: false, error: 'No UVA data in range', source: 'BCRA' })
     }
 
     const last = results[results.length - 1]
-    return new Response(
-      JSON.stringify({
-        ok: true,
-        value: last.valor,
-        date: last.fecha,
-        source: 'BCRA',
-      }),
-      { status: 200, headers: cacheHeaders },
-    )
+    return ok({ ok: true, value: last.valor, date: last.fecha, source: 'BCRA' })
   } catch (err) {
-    return new Response(
-      JSON.stringify({
-        ok: false,
-        error: err instanceof Error ? err.message : 'Unknown error',
-      }),
-      { status: 500, headers: corsHeaders },
-    )
+    return ok({
+      ok: false,
+      error: err instanceof Error ? err.message : 'Unknown error',
+      source: 'BCRA',
+    })
   }
 }
