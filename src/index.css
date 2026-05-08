@@ -86,59 +86,60 @@
 
 /* ── Dark mode ─────────────────────────────── */
 [data-theme="dark"] {
-  /* Richer, more vivid accents on dark */
-  --coral:      oklch(0.72 0.18 35);
-  --coral-ink:  oklch(0.90 0.10 35);
-  --coral-tint: oklch(0.20 0.08 35);
+  /* Vivid accents — high enough L to pop on dark surfaces */
+  --coral:      oklch(0.70 0.20 35);
+  --coral-ink:  oklch(0.92 0.10 35);
+  --coral-tint: oklch(0.24 0.10 35);
 
-  --olive:      oklch(0.70 0.15 130);
-  --olive-ink:  oklch(0.86 0.10 130);
-  --olive-tint: oklch(0.20 0.06 130);
+  --olive:      oklch(0.68 0.18 130);
+  --olive-ink:  oklch(0.88 0.12 130);
+  --olive-tint: oklch(0.24 0.08 130);
 
-  --plum:       oklch(0.64 0.15 320);
-  --plum-ink:   oklch(0.84 0.10 320);
-  --plum-tint:  oklch(0.20 0.07 320);
+  --plum:       oklch(0.62 0.17 320);
+  --plum-ink:   oklch(0.86 0.11 320);
+  --plum-tint:  oklch(0.24 0.09 320);
 
-  --rust:       oklch(0.68 0.18 25);
-  --rust-tint:  oklch(0.20 0.08 25);
+  --rust:       oklch(0.66 0.20 25);
+  --rust-tint:  oklch(0.24 0.10 25);
 
-  --cp-muted:  oklch(0.20 0.08 35 / 0.7);
-  --cp-ring:   oklch(0.72 0.18 35 / 0.30);
+  --cp-muted:  oklch(0.24 0.10 35 / 0.75);
+  --cp-ring:   oklch(0.70 0.20 35 / 0.32);
 
-  /* Deeper, richer warm darks */
-  --bg:  #100e0b;
-  --s:   #191510;
-  --s2:  #1f1a14;
-  --bd:  #2a231b;
-  --bd2: #382e24;
+  /* ── Surfaces: each step ~+0.07 L so layers are clearly distinct */
+  --bg:  #0d0b08;   /* true near-black, very warm */
+  --s:   #181410;   /* card surface   — clearly lifted from bg */
+  --s2:  #221c16;   /* hover/elevated — clearly lifted from s */
+  --bd:  #342b20;   /* visible border  */
+  --bd2: #46392b;   /* strong border / divider */
 
-  /* Brighter text for better readability */
-  --t:  #f6f0e3;
-  --t2: #a8998c;
-  --t3: #6e6256;
+  /* Text — enough contrast for WCAG AA */
+  --t:  #f8f2e5;   /* near-white warm */
+  --t2: #b0a192;   /* secondary — readable */
+  --t3: #7a6e62;   /* muted — visible but quiet */
 
-  --ok-bg: oklch(0.20 0.06 130);
-  --ok-fg: oklch(0.84 0.12 130);
-  --ok:    oklch(0.70 0.15 130);
+  /* Semantic tints — sat/light tuned for dark backgrounds */
+  --ok-bg: oklch(0.22 0.07 130);
+  --ok-fg: oklch(0.86 0.14 130);
+  --ok:    oklch(0.68 0.18 130);
 
-  --er-bg: oklch(0.20 0.07 25);
-  --er-fg: oklch(0.82 0.14 25);
-  --er:    oklch(0.68 0.18 25);
+  --er-bg: oklch(0.22 0.08 25);
+  --er-fg: oklch(0.84 0.16 25);
+  --er:    oklch(0.66 0.20 25);
 
-  --wa-bg: oklch(0.20 0.07 65);
-  --wa-fg: oklch(0.84 0.12 65);
+  --wa-bg: oklch(0.22 0.08 65);
+  --wa-fg: oklch(0.86 0.14 65);
 
-  --in-bg: oklch(0.20 0.07 320);
-  --in-fg: oklch(0.82 0.12 320);
+  --in-bg: oklch(0.22 0.08 320);
+  --in-fg: oklch(0.84 0.13 320);
 
-  --nu-bg: rgba(255,255,255,.055);
-  --nu-fg: #a8998c;
+  --nu-bg: rgba(255,255,255,.07);
+  --nu-fg: #b0a192;
 
-  --sh0: 0 1px 3px rgba(0,0,0,.40);
-  --sh1: 0 2px 6px rgba(0,0,0,.50);
-  --sh2: 0 6px 20px rgba(0,0,0,.60);
-  --sh3: 0 12px 40px rgba(0,0,0,.70);
-  --sh4: 0 28px 80px rgba(0,0,0,.80);
+  --sh0: 0 1px 3px rgba(0,0,0,.45);
+  --sh1: 0 2px 8px rgba(0,0,0,.55);
+  --sh2: 0 6px 24px rgba(0,0,0,.65);
+  --sh3: 0 14px 48px rgba(0,0,0,.75);
+  --sh4: 0 32px 88px rgba(0,0,0,.85);
 }
 
 /* ══════════════════════════════════════════════
@@ -2543,16 +2544,20 @@ tr:hover td { background: var(--s2); }
 }
 .seg-progress-item {
   flex: 1;
-  height: 4px;
-  border-radius: 2px;
-  background: var(--s2);
+  height: 5px;
+  border-radius: 3px;
+  background: var(--bd);          /* light: visible light gray */
+  transition: background 200ms;
 }
+/* filled states */
 .seg-progress-item.filled-coral  { background: var(--coral); }
 .seg-progress-item.filled-olive  { background: var(--olive); }
 .seg-progress-item.filled-plum   { background: var(--plum); }
 .seg-progress-item.filled-rust   { background: var(--rust); }
 .seg-progress-item.filled-ok     { background: var(--ok); }
 .seg-progress-item.filled-default { background: var(--cp); }
+/* dark: empty segments use bd2 so they're clearly visible against the card */
+[data-theme="dark"] .seg-progress-item { background: var(--bd2); }
 
 /* ══════════════════════════════════════════════
    NAV ITEM ACTIVE — use coral
@@ -2866,106 +2871,179 @@ tr:hover td { background: var(--s2); }
 
 /* ══════════════════════════════════════════════
    DARK MODE — COMPONENT REFINEMENTS
+   Strategy: --bg=#0d0b08 · --s=#181410 · --s2=#221c16 · --bd=#342b20 · --bd2=#46392b
+   Each layer is +0.07L apart so they're clearly distinct.
 ══════════════════════════════════════════════ */
 
-/* Cards get a very subtle inset top highlight in dark */
-[data-theme="dark"] .metric,
-[data-theme="dark"] .panel,
-[data-theme="dark"] .plan-card,
-[data-theme="dark"] .goal-card,
-[data-theme="dark"] .balance-card {
-  box-shadow: 0 0 0 0.5px var(--bd2) inset, var(--sh0);
-}
+/* ── Base surfaces ── */
+[data-theme="dark"] body         { background: var(--bg); }
+[data-theme="dark"] .app-shell   { background: var(--bg); }
+[data-theme="dark"] .content     { background: var(--bg); }
 
-/* Metric number — brighter in dark */
-[data-theme="dark"] .metric strong { color: var(--t); }
+/* Cards float above --bg */
+[data-theme="dark"] .metric      { background: var(--s);  border-color: var(--bd); }
+[data-theme="dark"] .panel       { background: var(--s);  border-color: var(--bd); }
+[data-theme="dark"] .plan-card   { background: var(--s);  border-color: var(--bd); }
+[data-theme="dark"] .goal-card   { background: var(--s);  border-color: var(--bd); }
+[data-theme="dark"] .balance-card{ background: var(--s);  border-color: var(--bd); }
+[data-theme="dark"] .tx-list     { background: var(--s);  border-color: var(--bd); }
+[data-theme="dark"] .tx-row      { background: var(--s); }
+[data-theme="dark"] .tx-row:hover{ background: var(--s2); }
+[data-theme="dark"] .tx-date-group{ background: var(--s); border-color: var(--bd); }
+[data-theme="dark"] .tx-date-header { background: var(--s2); border-color: var(--bd); }
 
-/* Insight card dark mode */
-[data-theme="dark"] .insight-card {
-  background: color-mix(in oklab, var(--coral-tint) 80%, var(--s));
-  border: 1px solid color-mix(in oklab, var(--coral) 25%, transparent);
-}
+/* Slightly elevated surfaces use --s2 */
+[data-theme="dark"] .panel-head { background: transparent; }
+[data-theme="dark"] .split-box  { background: var(--s2); border-color: var(--bd); }
+[data-theme="dark"] .expense-splits { background: var(--s2); }
+[data-theme="dark"] .expense-card-footer { background: var(--s); }
+[data-theme="dark"] .expense-card { background: var(--s); }
 
-/* Hero card dark mode — use a very dark warm tone so it reads as "inverted" */
+/* ── Sidebar ── */
+[data-theme="dark"] .sidebar          { background: var(--s); border-color: var(--bd); }
+[data-theme="dark"] .sidebar-head     { border-color: var(--bd); }
+[data-theme="dark"] .sidebar-footer   { border-color: var(--bd); }
+
+[data-theme="dark"] .nav-item         { color: var(--t2); }
+[data-theme="dark"] .nav-item:hover   { background: var(--coral-tint); color: var(--coral-ink); }
+[data-theme="dark"] .nav-item.active  { background: var(--coral-tint); color: var(--coral-ink); font-weight: 700; }
+[data-theme="dark"] .nav-item.logout  { color: var(--er-fg); }
+[data-theme="dark"] .nav-item.logout:hover { background: var(--er-bg); }
+
+/* ── Topbar ── */
+[data-theme="dark"] .topbar { border-color: var(--bd); }
+
+/* ── Hero balance card ──
+   In dark: keep it inverted (dark surface, bright num)
+   with a coral accent top-border so it anchors the page. */
 [data-theme="dark"] .hero-balance-card {
   background: var(--s2);
   color: var(--t);
   border: 1px solid var(--bd);
+  border-top: 3px solid var(--coral);
   box-shadow: var(--sh1);
 }
-[data-theme="dark"] .hero-balance-card .hero-eyebrow {
-  color: var(--t3);
-}
-[data-theme="dark"] .hero-balance-card .hero-balance-num {
-  color: var(--t);
-}
-[data-theme="dark"] .hero-balance-grid .hbg-label {
-  color: var(--t3);
-}
+[data-theme="dark"] .hero-balance-card::after { display: none; }
+[data-theme="dark"] .hero-balance-card .hero-eyebrow { color: var(--t3); }
+[data-theme="dark"] .hero-balance-card .hero-balance-num { color: var(--t); }
+[data-theme="dark"] .hero-balance-grid .hbg-label   { color: var(--t3); }
 [data-theme="dark"] .hero-balance-grid .hbg-income  { color: var(--olive-ink); }
 [data-theme="dark"] .hero-balance-grid .hbg-expense { color: var(--t2); }
 [data-theme="dark"] .hero-balance-grid .hbg-cuotas  { color: var(--t2); }
-[data-theme="dark"] .hero-balance-card::after { display: none; }
 
-/* Plan filter pills — better active state in dark */
-[data-theme="dark"] .plan-filter-pill.active {
-  background: var(--coral);
-  border-color: var(--coral);
-}
-
-/* Expense card paid — dark */
-[data-theme="dark"] .expense-card.paid { background: var(--ok-bg); }
-
-/* Bottom nav active icon container */
-[data-theme="dark"] .bottom-nav-item.active .bottom-nav-icon {
+/* ── Insight card ── */
+[data-theme="dark"] .insight-card {
   background: var(--coral-tint);
+  border: 1px solid oklch(0.50 0.16 35 / 0.35);
 }
 
-/* Sidebar nav item active */
-[data-theme="dark"] .nav-item.active {
-  background: var(--coral-tint);
-  color: var(--coral-ink);
-}
-[data-theme="dark"] .nav-item:hover {
-  background: var(--coral-tint);
-  color: var(--coral-ink);
-}
-
-/* Metric icons tinted */
+/* ── Metric cards ── */
+[data-theme="dark"] .metric strong { color: var(--t); }
+[data-theme="dark"] .metric-icon   { background: var(--nu-bg); color: var(--nu-fg); }
 [data-theme="dark"] .success .metric-icon { background: var(--ok-bg);  color: var(--ok-fg); }
 [data-theme="dark"] .danger  .metric-icon { background: var(--er-bg);  color: var(--er-fg); }
 [data-theme="dark"] .warning .metric-icon { background: var(--wa-bg);  color: var(--wa-fg); }
 [data-theme="dark"] .info    .metric-icon { background: var(--in-bg);  color: var(--in-fg); }
 [data-theme="dark"] .neutral .metric-icon { background: var(--nu-bg);  color: var(--nu-fg); }
 
-/* inst-summary cards dark mode borders */
-[data-theme="dark"] .inst-summary-card.warning { border-color: color-mix(in oklab, var(--wa-fg) 30%, transparent); }
-[data-theme="dark"] .inst-summary-card.success { border-color: color-mix(in oklab, var(--ok-fg) 30%, transparent); }
-[data-theme="dark"] .inst-summary-card.info    { border-color: color-mix(in oklab, var(--in-fg) 30%, transparent); }
-[data-theme="dark"] .inst-summary-card.danger  { border-color: color-mix(in oklab, var(--er-fg) 30%, transparent); }
+/* ── Plan cards ── */
+[data-theme="dark"] .plan-card-head    { border-color: var(--bd); }
+[data-theme="dark"] .plan-progress-wrap { background: var(--bd2); }
+[data-theme="dark"] .plan-progress-bar { background: linear-gradient(90deg, var(--coral), oklch(0.80 0.22 25)); }
+[data-theme="dark"] .inst-row          { border-color: var(--bd); }
+[data-theme="dark"] .inst-num          { background: var(--s2); }
+[data-theme="dark"] .plan-filter-pill  { background: var(--s2); border-color: var(--bd); color: var(--t2); }
+[data-theme="dark"] .plan-filter-pill.active { background: var(--coral); border-color: var(--coral); color: #fff; }
 
-/* gbal cards dark */
+/* ── Installment summary cards ── */
+[data-theme="dark"] .inst-summary-card.warning { background: var(--wa-bg); border-color: oklch(0.60 0.12 65 / 0.30); }
+[data-theme="dark"] .inst-summary-card.success { background: var(--ok-bg); border-color: oklch(0.60 0.14 130 / 0.30); }
+[data-theme="dark"] .inst-summary-card.info    { background: var(--in-bg); border-color: oklch(0.60 0.12 320 / 0.30); }
+[data-theme="dark"] .inst-summary-card.danger  { background: var(--er-bg); border-color: oklch(0.60 0.14 25 / 0.30); }
+[data-theme="dark"] .inst-summary-card.neutral { background: var(--nu-bg); border-color: var(--bd); }
+
+/* ── Group balance cards ── */
 [data-theme="dark"] .gbal-card.positive { background: var(--ok-bg); }
 [data-theme="dark"] .gbal-card.negative { background: var(--er-bg); }
+[data-theme="dark"] .gbal-card.neutral  { background: var(--s2); }
 
-/* Segmented progress bar — slightly more visible empty segments in dark */
-[data-theme="dark"] .seg-progress-item { background: var(--bd2); }
+/* ── Settlement ── */
+[data-theme="dark"] .settlement-item     { background: var(--s2); border-color: var(--bd); }
+[data-theme="dark"] .settlement-group-tab{ background: var(--s);  border-color: var(--bd); }
+[data-theme="dark"] .settlement-group-tab.active { background: var(--cp); border-color: var(--cp); color: #fff; }
 
-/* Settlement */
-[data-theme="dark"] .settlement-item { background: var(--s2); }
+/* ── Expense cards (groups) ── */
+[data-theme="dark"] .expense-card.paid { background: oklch(0.22 0.07 130 / 0.5); }
 
-/* Modal */
-[data-theme="dark"] .modal-backdrop { background: rgba(0,0,0,.65); }
+/* ── Chips / filter pills ── */
+[data-theme="dark"] .chip             { background: var(--s2); border-color: var(--bd); color: var(--t2); }
+[data-theme="dark"] .chip:hover       { border-color: var(--coral); color: var(--coral-ink); background: var(--coral-tint); }
+[data-theme="dark"] .chip.active      { border-color: var(--coral); color: var(--coral-ink); background: var(--coral-tint); font-weight: 700; }
 
-/* Chip active — dark */
-[data-theme="dark"] .chip.active { border-color: var(--coral); color: var(--coral); background: var(--coral-tint); }
-[data-theme="dark"] .chip:hover  { border-color: var(--coral); color: var(--coral-ink); }
+/* ── Buttons ── */
+[data-theme="dark"] .btn              { background: var(--s2); border-color: var(--bd); color: var(--t); }
+[data-theme="dark"] .btn:hover:not(:disabled) { border-color: var(--coral); background: var(--coral-tint); color: var(--coral-ink); }
+[data-theme="dark"] .btn.ghost        { background: transparent; border-color: transparent; color: var(--t2); }
+[data-theme="dark"] .btn.ghost:hover:not(:disabled) { background: var(--s2); border-color: var(--bd); color: var(--t); }
+[data-theme="dark"] .icon-btn         { background: var(--s2); border-color: var(--bd); color: var(--t2); }
+[data-theme="dark"] .icon-btn:hover   { background: var(--coral-tint); border-color: var(--coral); color: var(--coral-ink); }
+[data-theme="dark"] .icon-btn.danger  { color: var(--er-fg); }
+[data-theme="dark"] .icon-btn.danger:hover { background: var(--er-bg); border-color: var(--er-fg); }
+[data-theme="dark"] .theme-toggle     { background: var(--s2); border-color: var(--bd); color: var(--t2); }
 
-/* Goal card — dark */
-[data-theme="dark"] .goal-card {
-  box-shadow: 0 0 0 0.5px var(--bd2) inset, var(--sh0);
+/* ── Inputs ── */
+[data-theme="dark"] input,
+[data-theme="dark"] select,
+[data-theme="dark"] textarea { background: var(--s2); border-color: var(--bd); color: var(--t); }
+[data-theme="dark"] input:focus,
+[data-theme="dark"] select:focus,
+[data-theme="dark"] textarea:focus { border-color: var(--coral); box-shadow: 0 0 0 3px var(--cp-ring); }
+
+/* ── Bottom nav ── */
+[data-theme="dark"] .bottom-nav {
+  background: color-mix(in oklab, var(--s) 90%, transparent);
+  border-color: var(--bd);
 }
+[data-theme="dark"] .bottom-nav-item.active .bottom-nav-icon { background: var(--coral-tint); }
+
+/* ── Modal ── */
+[data-theme="dark"] .modal-backdrop { background: rgba(0,0,0,.72); }
+[data-theme="dark"] .modal          { background: var(--s); border-color: var(--bd); }
+
+/* ── Badges ── */
+[data-theme="dark"] .badge.success { background: var(--ok-bg);  color: var(--ok-fg); }
+[data-theme="dark"] .badge.danger  { background: var(--er-bg);  color: var(--er-fg); }
+[data-theme="dark"] .badge.warning { background: var(--wa-bg);  color: var(--wa-fg); }
+[data-theme="dark"] .badge.info    { background: var(--in-bg);  color: var(--in-fg); }
+[data-theme="dark"] .badge.neutral { background: var(--nu-bg);  color: var(--nu-fg); }
+
+/* ── Goal cards ── */
+[data-theme="dark"] .goal-card        { background: var(--s); border-color: var(--bd); }
 [data-theme="dark"] .goal-progress-track { background: var(--bd2); }
+[data-theme="dark"] .goal-strip-bar   { background: var(--bd2); }
+
+/* ── Recurring / activity ── */
+[data-theme="dark"] .recurring-card   { background: var(--s2); border-color: var(--bd); }
+[data-theme="dark"] .activity-icon    { background: var(--coral-tint); color: var(--coral-ink); }
+
+/* ── Settings tabs ── */
+[data-theme="dark"] .settings-tabs    { background: var(--s); border-color: var(--bd); }
+[data-theme="dark"] .settings-tab     { color: var(--t2); }
+[data-theme="dark"] .settings-tab:hover { background: var(--s2); color: var(--t); }
+[data-theme="dark"] .settings-tab.active { background: var(--coral); color: #fff; }
+
+/* ── Notif dropdown ── */
+[data-theme="dark"] .notif-dropdown   { background: var(--s); border-color: var(--bd); }
+[data-theme="dark"] .notif-head       { background: var(--s); }
+[data-theme="dark"] .notif-item:hover { background: var(--s2); }
+[data-theme="dark"] .notif-item.unread { background: var(--coral-tint); }
+
+/* ── Auth ── */
+[data-theme="dark"] .auth-card { background: var(--s); border-color: var(--bd); }
+[data-theme="dark"] .auth-hint { background: var(--s2); }
+
+/* ── Brand mark ── */
+[data-theme="dark"] .brand-mark { background: var(--coral); color: #fff; }
 
 /* Topbar display title — slightly smaller on screens where serif looks large */
 @media (max-width: 640px) {

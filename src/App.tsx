@@ -250,6 +250,7 @@ function App() {
   const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>(demoGoals)
   const [goalForm, setGoalForm] = useState({ title: '', target: '', saved: '', emoji: '🎯', deadline: '', color: 'olive' as SavingsGoal['color'] })
   const [showGoalForm, setShowGoalForm] = useState(false)
+  const [confirmDeleteGoal, setConfirmDeleteGoal] = useState<string | null>(null)
   const [expandedExpenses, setExpandedExpenses] = useState<Set<string>>(new Set())
   const [confirmDeleteExpense, setConfirmDeleteExpense] = useState<string | null>(null)
   const [markingId, setMarkingId] = useState<string | null>(null)
@@ -899,12 +900,12 @@ function App() {
   }
 
   async function deleteTransaction(id: string) {
-    if (isDemo) {
-      setTransactions((items) => items.filter((item) => item.id !== id))
-      return
+    // Optimistic update — instant in all cases
+    setTransactions((items) => items.filter((item) => item.id !== id))
+    setConfirmDeleteTx(null)
+    if (!isDemo) {
+      await supabase.from('transactions').delete().eq('id', id)
     }
-    await supabase.from('transactions').delete().eq('id', id)
-    await loadData(currentUser.id)
   }
 
   async function saveGroup(event: React.FormEvent) {
@@ -1225,6 +1226,31 @@ function App() {
     }
   }
 
+  function deleteGoal(id: string) {
+    setSavingsGoals((prev) => prev.filter((g) => g.id !== id))
+    setConfirmDeleteGoal(null)
+  }
+
+  function addGoalProgress(id: string, amount: number) {
+    setSavingsGoals((prev) => prev.map((g) => g.id === id ? { ...g, saved: Math.min(g.saved + amount, g.target) } : g))
+  }
+
+  function addNewGoal() {
+    if (!goalForm.title.trim() || !goalForm.target) return
+    const newGoal: SavingsGoal = {
+      id: `goal-${Date.now()}`,
+      title: goalForm.title.trim(),
+      target: Number(goalForm.target),
+      saved: Number(goalForm.saved) || 0,
+      emoji: goalForm.emoji || '🎯',
+      deadline: goalForm.deadline || null,
+      color: goalForm.color,
+    }
+    setSavingsGoals((prev) => [...prev, newGoal])
+    setGoalForm({ title: '', target: '', saved: '', emoji: '🎯', deadline: '', color: 'olive' })
+    setShowGoalForm(false)
+  }
+
   async function deleteGroup(groupId: string) {
     const nextGroups = groups.filter((g) => g.id !== groupId)
     setGroups(nextGroups)
@@ -1276,20 +1302,22 @@ function App() {
   }
 
   async function deletePlan(planId: string) {
-    if (isDemo) {
-      const planInstallmentIds = installments.filter((i) => i.plan_id === planId).map((i) => i.id)
-      setSplits((items) => items.filter((s) => !s.installment_id || !planInstallmentIds.includes(s.installment_id)))
-      setInstallments((items) => items.filter((i) => i.plan_id !== planId))
-      setPlans((items) => items.filter((p) => p.id !== planId))
-      return
+    // Optimistic update — instant in all cases
+    const planInstallmentIds = installments.filter((i) => i.plan_id === planId).map((i) => i.id)
+    setSplits((items) => items.filter((s) => !s.installment_id || !planInstallmentIds.includes(s.installment_id)))
+    setInstallments((items) => items.filter((i) => i.plan_id !== planId))
+    setPlans((items) => items.filter((p) => p.id !== planId))
+    setConfirmDeletePlan(null)
+    if (!isDemo) {
+      // Batch deletes in parallel — no serial loop
+      if (planInstallmentIds.length > 0) {
+        await supabase.from('shared_expense_splits').delete().in('installment_id', planInstallmentIds)
+      }
+      await Promise.all([
+        supabase.from('installments').delete().eq('plan_id', planId),
+        supabase.from('installment_plans').delete().eq('id', planId),
+      ])
     }
-    const planInstallments = installments.filter((i) => i.plan_id === planId)
-    for (const inst of planInstallments) {
-      await supabase.from('shared_expense_splits').delete().eq('installment_id', inst.id)
-    }
-    await supabase.from('installments').delete().eq('plan_id', planId)
-    await supabase.from('installment_plans').delete().eq('id', planId)
-    await loadData(currentUser.id)
   }
 
   async function removeGroupMember(memberId: string, groupId: string) {
@@ -2900,6 +2928,56 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
             })}
           </div>
         )}
+
+        {/* ── Gastos compartidos pendientes ── */}
+        {(() => {
+          const myDebts = splits.filter((s) => s.debtor_id === currentUser.id && s.status === 'pending')
+          if (myDebts.length === 0) return null
+          const totalDebts = myDebts.reduce((sum, s) => sum + Number(s.amount), 0)
+          return (
+            <section className="panel">
+              <div className="panel-head">
+                <h2>Lo que debés (gastos compartidos)</h2>
+                <Badge tone="warning">{formatARS(totalDebts)}</Badge>
+              </div>
+              <div className="inst-list">
+                {myDebts.map((split) => {
+                  const expense = sharedExpenses.find((e) => e.id === split.shared_expense_id)
+                  const creditorName = profileName(split.creditor_id)
+                  const overdue = split.due_on && split.due_on < todayISO()
+                  return (
+                    <div key={split.id} className="inst-row">
+                      <div className={cn('inst-num', overdue && 'paid')} style={{ background: 'var(--wa-bg)', color: 'var(--wa-fg)' }}>
+                        <Users size={12} />
+                      </div>
+                      <div className="inst-date-block" style={{ flex: 1 }}>
+                        <span className="inst-date" style={{ fontWeight: 600, color: 'var(--t)' }}>
+                          {expense?.title ?? 'Gasto compartido'}
+                        </span>
+                        <span className="inst-uva-sub">
+                          Le debés a <strong>{creditorName}</strong>
+                          {split.due_on && ` · vence ${formatDateAR(split.due_on)}`}
+                          {overdue && <span style={{ color: 'var(--er-fg)', fontWeight: 700 }}> · VENCIDO</span>}
+                        </span>
+                      </div>
+                      <div className="inst-amount-block" style={{ textAlign: 'right' }}>
+                        <span className="inst-amount" style={{ color: 'var(--wa-fg)', fontSize: 14 }}>{formatARS(split.amount)}</span>
+                        <span className="inst-uva-sub">tu parte</span>
+                      </div>
+                      <button
+                        className="btn small primary"
+                        disabled={markingId === split.id}
+                        onClick={() => void markSplitPaid(split)}
+                      >
+                        <Check size={12} />{markingId === split.id ? '…' : 'Pagar'}
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          )
+        })()}
       </section>
     )
   }
@@ -2915,33 +2993,9 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
     const totalTarget = savingsGoals.reduce((s, g) => s + g.target, 0)
     const completed   = savingsGoals.filter((g) => g.saved >= g.target).length
 
-    function addGoal() {
-      if (!goalForm.title.trim() || !goalForm.target) return
-      const newGoal: SavingsGoal = {
-        id: `goal-${Date.now()}`,
-        title: goalForm.title.trim(),
-        target: Number(goalForm.target),
-        saved: Number(goalForm.saved) || 0,
-        emoji: goalForm.emoji || '🎯',
-        deadline: goalForm.deadline || null,
-        color: goalForm.color,
-      }
-      setSavingsGoals((prev) => [...prev, newGoal])
-      setGoalForm({ title: '', target: '', saved: '', emoji: '🎯', deadline: '', color: 'olive' })
-      setShowGoalForm(false)
-    }
-
-    function deleteGoal(id: string) {
-      setSavingsGoals((prev) => prev.filter((g) => g.id !== id))
-    }
-
-    function addProgress(id: string, amount: number) {
-      setSavingsGoals((prev) => prev.map((g) => g.id === id ? { ...g, saved: Math.min(g.saved + amount, g.target) } : g))
-    }
-
     return (
       <section className="page-stack">
-        {/* Summary row */}
+        {/* Summary */}
         <div className="metric-grid compact">
           <div className="metric">
             <div className="metric-icon neutral"><Target size={16} /></div>
@@ -2956,46 +3010,60 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
         </div>
 
         {/* Goals list */}
-        <div className="goal-stack">
-          {savingsGoals.map((goal) => {
-            const pct  = Math.min(Math.round((goal.saved / goal.target) * 100), 100)
-            const done = goal.saved >= goal.target
-            const col  = goalColorMap[goal.color]
-            return (
-              <div key={goal.id} className="goal-card" style={{ '--goal-accent': col.accent, '--goal-bg': col.bg, '--goal-ink': col.ink } as React.CSSProperties}>
-                <div className="goal-card-head">
-                  <span className="goal-emoji">{goal.emoji}</span>
-                  <div className="goal-card-info">
-                    <strong className="goal-title">{goal.title}</strong>
-                    {goal.deadline && <span className="goal-deadline">{goal.deadline.replace('-', ' / ')}</span>}
+        {savingsGoals.length === 0 ? (
+          <div className="empty">Sin metas todavía. Creá una para empezar a ahorrar.</div>
+        ) : (
+          <div className="goal-stack">
+            {savingsGoals.map((goal) => {
+              const pct  = Math.min(Math.round((goal.saved / goal.target) * 100), 100)
+              const done = goal.saved >= goal.target
+              const col  = goalColorMap[goal.color]
+              const isConfirmingDel = confirmDeleteGoal === goal.id
+              return (
+                <div key={goal.id} className="goal-card" style={{ '--goal-accent': col.accent, '--goal-bg': col.bg, '--goal-ink': col.ink } as React.CSSProperties}>
+                  <div className="goal-card-head">
+                    <span className="goal-emoji">{goal.emoji}</span>
+                    <div className="goal-card-info">
+                      <strong className="goal-title">{goal.title}</strong>
+                      {goal.deadline && <span className="goal-deadline">hasta {goal.deadline.replace('-', ' / ')}</span>}
+                    </div>
+                    <div className="goal-card-right">
+                      {done && <Badge tone="success">✓ Lograda</Badge>}
+                      {!done && <span className="goal-pct" style={{ color: col.accent }}>{pct}%</span>}
+                      {isConfirmingDel ? (
+                        <div className="tx-confirm-delete">
+                          <span>¿Eliminar?</span>
+                          <button className="btn small danger" onClick={() => deleteGoal(goal.id)}>Sí</button>
+                          <button className="btn small" onClick={() => setConfirmDeleteGoal(null)}>No</button>
+                        </div>
+                      ) : (
+                        <button className="icon-btn sm danger" onClick={() => setConfirmDeleteGoal(goal.id)} aria-label="Eliminar meta"><Trash2 size={13} /></button>
+                      )}
+                    </div>
                   </div>
-                  <div className="goal-card-right">
-                    {done ? <Badge tone="success">✓ Lograda</Badge> : <span className="goal-pct">{pct}%</span>}
-                    <button className="icon-btn sm danger" onClick={() => deleteGoal(goal.id)} aria-label="Eliminar meta"><Trash2 size={12} /></button>
+                  {/* Progress bar */}
+                  <div className="goal-progress-track">
+                    <div className="goal-progress-fill" style={{ width: `${pct}%`, background: col.accent }} />
                   </div>
-                </div>
-                {/* Progress bar */}
-                <div className="goal-progress-track">
-                  <div className="goal-progress-fill" style={{ width: `${pct}%` }} />
-                </div>
-                {/* Amounts row */}
-                <div className="goal-amounts">
-                  <span className="goal-saved">{formatARS(goal.saved)} ahorrado</span>
-                  <span className="goal-target">meta {formatARS(goal.target)}</span>
-                </div>
-                {/* Quick add row */}
-                {!done && (
-                  <div className="goal-quick-add">
-                    {[10000, 50000, 100000].map((amt) => (
-                      <button key={amt} className="goal-add-btn" onClick={() => addProgress(goal.id, amt)}>+{formatARS(amt)}</button>
-                    ))}
-                    <span className="goal-remaining">Faltan {formatARS(goal.target - goal.saved)}</span>
+                  {/* Amounts */}
+                  <div className="goal-amounts">
+                    <span className="goal-saved" style={{ color: col.ink }}>{formatARS(goal.saved)} ahorrado</span>
+                    <span className="goal-target">meta: {formatARS(goal.target)}</span>
                   </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
+                  {/* Quick add */}
+                  {!done && (
+                    <div className="goal-quick-add">
+                      {[10000, 50000, 100000].map((amt) => (
+                        <button key={amt} className="goal-add-btn" style={{ background: col.bg, color: col.ink }} onClick={() => addGoalProgress(goal.id, amt)}>+{formatARS(amt)}</button>
+                      ))}
+                      <span className="goal-remaining">Faltan {formatARS(goal.target - goal.saved)}</span>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        )}
 
         {/* Add goal form */}
         {showGoalForm ? (
@@ -3003,7 +3071,7 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
             <div className="panel-head"><h2>Nueva meta</h2><button className="icon-btn sm" onClick={() => setShowGoalForm(false)}><X size={14} /></button></div>
             <div className="form-grid">
               <label>Título<input value={goalForm.title} onChange={(e) => setGoalForm((f) => ({ ...f, title: e.target.value }))} placeholder="Ej. Vacaciones" /></label>
-              <label>Emoji<input value={goalForm.emoji} onChange={(e) => setGoalForm((f) => ({ ...f, emoji: e.target.value }))} placeholder="🎯" style={{ maxWidth: 80 }} /></label>
+              <label>Emoji<input value={goalForm.emoji} onChange={(e) => setGoalForm((f) => ({ ...f, emoji: e.target.value }))} placeholder="🎯" /></label>
               <label>Objetivo (ARS)<input type="number" value={goalForm.target} onChange={(e) => setGoalForm((f) => ({ ...f, target: e.target.value }))} placeholder="500000" /></label>
               <label>Ya ahorrado<input type="number" value={goalForm.saved} onChange={(e) => setGoalForm((f) => ({ ...f, saved: e.target.value }))} placeholder="0" /></label>
               <label>Fecha límite<input type="month" value={goalForm.deadline} onChange={(e) => setGoalForm((f) => ({ ...f, deadline: e.target.value }))} /></label>
@@ -3017,7 +3085,7 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
               </label>
             </div>
             <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
-              <button className="btn primary" onClick={addGoal}><Plus size={15} />Guardar meta</button>
+              <button className="btn primary" onClick={addNewGoal}><Plus size={15} />Guardar meta</button>
               <button className="btn ghost" onClick={() => setShowGoalForm(false)}>Cancelar</button>
             </div>
           </section>
