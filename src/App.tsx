@@ -156,20 +156,20 @@ const demoRecurring: RecurringExpense[] = [
 ]
 
 const navItems = [
-  { id: 'dashboard' as const, label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'dashboard' as const, label: 'Inicio', icon: LayoutDashboard },
   { id: 'movements' as const, label: 'Movimientos', icon: Receipt },
   { id: 'groups' as const, label: 'Grupos', icon: Users },
   { id: 'installments' as const, label: 'Cuotas', icon: CreditCard },
-  { id: 'settlement' as const, label: 'Liquidacion', icon: WalletCards },
-  { id: 'settings' as const, label: 'Configuracion', icon: Settings },
+  { id: 'settlement' as const, label: 'Saldar', icon: WalletCards },
+  { id: 'settings' as const, label: 'Ajustes', icon: Settings },
 ]
 
 const bottomNavItems = [
   { id: 'dashboard' as const, label: 'Inicio', icon: LayoutDashboard },
-  { id: 'movements' as const, label: 'Gastos', icon: Receipt },
+  { id: 'movements' as const, label: 'Movimientos', icon: Receipt },
   { id: 'groups' as const, label: 'Grupos', icon: Users },
   { id: 'installments' as const, label: 'Cuotas', icon: CreditCard },
-  { id: 'settlement' as const, label: 'Liquidar', icon: WalletCards },
+  { id: 'settlement' as const, label: 'Saldar', icon: WalletCards },
 ]
 
 const emptyTransaction = {
@@ -1671,10 +1671,10 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
     <div className="app-shell">
       <aside className={cn('sidebar', sidebarOpen && 'open')}>
         <div className="sidebar-head">
-          <span className="brand-mark">CC</span>
+          <span className="brand-mark">cc</span>
           <div>
             <strong>Cuentas Claras</strong>
-            <small>Finanzas compartidas</small>
+            <small>{currentUser.full_name ?? currentUser.email}{isDemo ? ' · demo' : ''}</small>
           </div>
         </div>
         <nav>
@@ -1688,6 +1688,13 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
             )
           })}
         </nav>
+        {uvaValue && (
+          <div className="sidebar-uva-card">
+            <div className="eyebrow">UVA hoy</div>
+            <div className="uva-val">{formatARS(uvaValue)}</div>
+            {uvaDate && <div className="uva-delta">{uvaDate}</div>}
+          </div>
+        )}
         <div className="sidebar-footer">
           <button className="nav-item" onClick={() => setDarkMode((d) => !d)} aria-label="Cambiar tema">
             {darkMode ? <Sun size={18} /> : <Moon size={18} />}
@@ -1709,8 +1716,8 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
               <Menu size={20} />
             </button>
             <div className="topbar-title">
-              <h1>{navItems.find((item) => item.id === view)?.label}</h1>
-              <p>{currentUser.email}{isDemo ? ' · demo' : ''}</p>
+              <div className="topbar-eyebrow">{currentUser.email}{isDemo ? ' · demo' : ''}</div>
+              <h1 className="topbar-display-title">{navItems.find((item) => item.id === view)?.label}</h1>
             </div>
           </div>
           <div className="topbar-right">
@@ -1839,6 +1846,9 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
       )}
 
       <BottomNav view={view} onNavigate={setView} />
+      <button className="app-fab" onClick={() => setDialog('transaction')} aria-label="Agregar movimiento">
+        <Plus size={22} />
+      </button>
 
       {dialog === 'installment' && (
         <Modal title="Nuevo plan de cuotas" onClose={() => setDialog(null)}>
@@ -1943,16 +1953,56 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
   )
 
   function renderDashboard() {
-    const chartFill   = darkMode ? '#2dd4bf' : '#0d9488'
-    const gridStroke  = darkMode ? '#263c58' : '#e2e8e4'
-    const axisColor   = darkMode ? '#64748b' : '#94a3b8'
-    const tooltipBg   = darkMode ? '#182636' : '#ffffff'
-    const tooltipBd   = darkMode ? '#263c58' : '#e2e8e4'
-    const tooltipText = darkMode ? '#e2eff0' : '#0f172a'
+    const gridStroke  = darkMode ? '#2c2620' : '#e6dfcf'
+    const axisColor   = darkMode ? '#6b6356' : '#a59c90'
+    const tooltipBg   = darkMode ? '#1c1814' : '#fbf7ee'
+    const tooltipBd   = darkMode ? '#2c2620' : '#e6dfcf'
+    const tooltipText = darkMode ? '#f3ede0' : '#1a1714'
     const nextDuePlan = installmentStats.nextDue ? plans.find((p) => p.id === installmentStats.nextDue?.plan_id) : null
+
+    const todayDate = new Date()
+    const daysLeft = new Date(todayDate.getFullYear(), todayDate.getMonth() + 1, 0).getDate() - todayDate.getDate()
+    const greeting = currentUser.full_name ? currentUser.full_name.split(' ')[0] : 'vos'
 
     return (
       <section className="page-stack">
+        {/* Hero balance card */}
+        <div className="hero-balance-card">
+          <div className="hero-eyebrow">Balance · {month}</div>
+          <div className="hero-balance-num">{formatARS(stats.balance)}</div>
+          <div className="hero-balance-grid">
+            <div>
+              <div className="hbg-label">Ingresos</div>
+              <div className="hbg-value hbg-income">+{formatARS(stats.income)}</div>
+            </div>
+            <div>
+              <div className="hbg-label">Gastos</div>
+              <div className="hbg-value hbg-expense">−{formatARS(stats.expense)}</div>
+            </div>
+            <div>
+              <div className="hbg-label">Cuotas</div>
+              <div className="hbg-value hbg-cuotas">{formatARS(installmentStats.totalPending)}</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Insight / greeting strip */}
+        {stats.expense > 0 && (
+          <div className="insight-card">
+            <div className="insight-icon"><Activity size={16} /></div>
+            <div className="insight-body">
+              <div className="insight-eyebrow">Hola, {greeting}</div>
+              <div className="insight-text">
+                Te quedan <strong>{daysLeft} días</strong> de mes.
+                {stats.balance >= 0
+                  ? <> Vas bien — balance positivo de <strong>{formatARS(stats.balance)}</strong>.</>
+                  : <> Gastos superan ingresos por <strong>{formatARS(Math.abs(stats.balance))}</strong>.</>
+                }
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="metric-grid">
           <Metric title="Gastos personales" value={formatARS(stats.expense)} icon={ArrowDownRight} tone="danger" />
           <Metric title="Ingresos del mes" value={formatARS(stats.income)} icon={ArrowUpRight} tone="success" />
@@ -2010,9 +2060,9 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
                   <Tooltip
                     formatter={(value) => formatARS(Number(value))}
                     contentStyle={{ background: tooltipBg, border: `1px solid ${tooltipBd}`, borderRadius: 8, color: tooltipText, fontSize: 13 }}
-                    cursor={{ fill: darkMode ? 'rgba(45,212,191,.07)' : 'rgba(13,148,136,.06)' }}
+                    cursor={{ fill: darkMode ? 'rgba(243,237,224,.04)' : 'rgba(26,23,20,.04)' }}
                   />
-                  <Bar dataKey="total" fill={chartFill} radius={[6, 6, 0, 0]} />
+                  <Bar dataKey="total" fill={darkMode ? 'oklch(0.68 0.12 130)' : 'oklch(0.50 0.12 320)'} radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -2607,7 +2657,7 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
               const totalUvaPendingCuotas = isUva && plan.uva_count ? pendingList.length * Number(plan.uva_count) : 0
               const overdueInPlan = pendingList.filter((i) => i.due_on < today).length
               const allPaid = paidCount === planInstallments.length && planInstallments.length > 0
-              const progress = planInstallments.length > 0 ? (paidCount / planInstallments.length) * 100 : 0
+
               const isExpanded = expandedPlans.has(plan.id)
               const isConfirmingDelete = confirmDeletePlan === plan.id
 
@@ -2627,9 +2677,9 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
                   <div className="plan-card-head">
                     <div className="plan-icon"><CreditCard size={18} /></div>
                     <div className="plan-info">
-                      <strong>
+                      <strong style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         {plan.title}
-                        {isUva && <span className="uva-tag">UVA</span>}
+                        <span className={`plan-type-chip ${isUva ? 'uva' : 'ars'}`}>{isUva ? 'UVA' : 'ARS'}</span>
                       </strong>
                       <span>{plan.group_id ? groups.find((g) => g.id === plan.group_id)?.name : 'Privada'}</span>
                     </div>
@@ -2646,9 +2696,17 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
                     </button>
                   </div>
 
-                  {/* Progress bar */}
-                  <div className="plan-progress-wrap">
-                    <div className="plan-progress-bar" style={{ width: `${progress}%` }} />
+                  {/* Segmented progress bar */}
+                  <div className="seg-progress">
+                    {Array.from({ length: Math.min(planInstallments.length, 24) }).map((_, k) => {
+                      const totalSegs = Math.min(planInstallments.length, 24)
+                      const filledSegs = Math.round((paidCount / planInstallments.length) * totalSegs)
+                      const filled = k < filledSegs
+                      const colorClass = filled
+                        ? isUva ? 'filled-plum' : allPaid ? 'filled-olive' : overdueInPlan > 0 ? 'filled-rust' : 'filled-coral'
+                        : ''
+                      return <div key={k} className={`seg-progress-item${filled ? ` ${colorClass}` : ''}`} />
+                    })}
                   </div>
 
                   {/* Summary (always visible) */}
