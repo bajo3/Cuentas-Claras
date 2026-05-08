@@ -25,6 +25,7 @@ import {
   Search,
   Settings,
   Sun,
+  Target,
   Trash2,
   TrendingDown,
   TrendingUp,
@@ -32,6 +33,7 @@ import {
   Users,
   WalletCards,
   X,
+  Zap,
 } from 'lucide-react'
 import type { Session, User } from '@supabase/supabase-js'
 import type React from 'react'
@@ -68,7 +70,17 @@ import type {
 } from './lib/types'
 import { cn, formatARS, formatDateAR, monthInput, todayISO } from './lib/utils'
 
-type View = 'dashboard' | 'movements' | 'groups' | 'installments' | 'settlement' | 'settings'
+type View = 'dashboard' | 'movements' | 'groups' | 'installments' | 'settlement' | 'metas' | 'settings'
+
+interface SavingsGoal {
+  id: string
+  title: string
+  target: number
+  saved: number
+  emoji: string
+  deadline: string | null
+  color: 'coral' | 'olive' | 'plum' | 'rust'
+}
 type Dialog = null | 'transaction' | 'group' | 'shared' | 'installment' | 'invite' | 'recurring' | 'convert-tx'
 type SettingsTab = 'profile' | 'appearance' | 'categories' | 'recurring' | 'data'
 type SplitMode = 'equal' | 'amount' | 'percentage'
@@ -155,20 +167,27 @@ const demoRecurring: RecurringExpense[] = [
   { id: 'rec-2', user_id: demoUser.id, group_id: 'group-home', title: 'Limpieza', amount: 45000, category_id: 'cat-home', frequency: 'monthly', start_date: `${ym}-01`, next_due: `${ym}-05`, paid_by: demoUser.id, split_mode: 'equal', is_active: true, created_at: todayISO() },
 ]
 
+const demoGoals: SavingsGoal[] = [
+  { id: 'goal-1', title: 'Vacaciones en Brasil', target: 700000, saved: 432000, emoji: '🏖️', deadline: '2026-12', color: 'olive' },
+  { id: 'goal-2', title: 'Macbook Pro', target: 2500000, saved: 850000, emoji: '💻', deadline: '2026-08', color: 'plum' },
+  { id: 'goal-3', title: 'Fondo de emergencia', target: 1200000, saved: 1200000, emoji: '🛡️', deadline: null, color: 'coral' },
+]
+
 const navItems = [
   { id: 'dashboard' as const, label: 'Inicio', icon: LayoutDashboard },
   { id: 'movements' as const, label: 'Movimientos', icon: Receipt },
   { id: 'groups' as const, label: 'Grupos', icon: Users },
   { id: 'installments' as const, label: 'Cuotas', icon: CreditCard },
   { id: 'settlement' as const, label: 'Saldar', icon: WalletCards },
+  { id: 'metas' as const, label: 'Metas', icon: Target },
   { id: 'settings' as const, label: 'Ajustes', icon: Settings },
 ]
 
 const bottomNavItems = [
   { id: 'dashboard' as const, label: 'Inicio', icon: LayoutDashboard },
   { id: 'movements' as const, label: 'Movimientos', icon: Receipt },
-  { id: 'groups' as const, label: 'Grupos', icon: Users },
   { id: 'installments' as const, label: 'Cuotas', icon: CreditCard },
+  { id: 'metas' as const, label: 'Metas', icon: Target },
   { id: 'settlement' as const, label: 'Saldar', icon: WalletCards },
 ]
 
@@ -227,6 +246,10 @@ function App() {
   const [confirmDeleteTx, setConfirmDeleteTx] = useState<string | null>(null)
   const [confirmDeletePlan, setConfirmDeletePlan] = useState<string | null>(null)
   const [confirmDeleteMember, setConfirmDeleteMember] = useState<string | null>(null)
+  const [confirmDeleteGroup, setConfirmDeleteGroup] = useState<string | null>(null)
+  const [savingsGoals, setSavingsGoals] = useState<SavingsGoal[]>(demoGoals)
+  const [goalForm, setGoalForm] = useState({ title: '', target: '', saved: '', emoji: '🎯', deadline: '', color: 'olive' as SavingsGoal['color'] })
+  const [showGoalForm, setShowGoalForm] = useState(false)
   const [expandedExpenses, setExpandedExpenses] = useState<Set<string>>(new Set())
   const [confirmDeleteExpense, setConfirmDeleteExpense] = useState<string | null>(null)
   const [markingId, setMarkingId] = useState<string | null>(null)
@@ -1202,6 +1225,20 @@ function App() {
     }
   }
 
+  async function deleteGroup(groupId: string) {
+    const nextGroups = groups.filter((g) => g.id !== groupId)
+    setGroups(nextGroups)
+    setMembers((items) => items.filter((m) => m.group_id !== groupId))
+    setSplits((items) => items.filter((s) => s.group_id !== groupId))
+    setSharedExpenses((items) => items.filter((e) => e.group_id !== groupId))
+    setPlans((items) => items.map((p) => p.group_id === groupId ? { ...p, group_id: null } : p))
+    setConfirmDeleteGroup(null)
+    if (selectedGroupId === groupId) setSelectedGroupId(nextGroups[0]?.id ?? '')
+    if (!isDemo) {
+      await supabase.from('groups').delete().eq('id', groupId)
+    }
+  }
+
   function toggleExpense(expenseId: string) {
     setExpandedExpenses((prev) => {
       const next = new Set(prev)
@@ -1688,13 +1725,32 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
             )
           })}
         </nav>
-        {uvaValue && (
-          <div className="sidebar-uva-card">
-            <div className="eyebrow">UVA hoy</div>
-            <div className="uva-val">{formatARS(uvaValue)}</div>
-            {uvaDate && <div className="uva-delta">{uvaDate}</div>}
+        <div className="sidebar-uva-card">
+          <div className="sidebar-uva-header">
+            <div className="eyebrow" style={{ color: 'var(--plum-ink)' }}>UVA · hoy</div>
+            <button
+              className="uva-refresh-btn"
+              onClick={() => void fetchUvaValue(true)}
+              disabled={uvaLoading}
+              aria-label="Actualizar UVA"
+            >
+              <Zap size={11} />
+            </button>
           </div>
-        )}
+          {uvaLoading ? (
+            <div className="uva-val" style={{ opacity: 0.5 }}>…</div>
+          ) : uvaValue ? (
+            <>
+              <div className="uva-val">{formatARS(uvaValue)}</div>
+              {uvaDate && <div className="uva-delta">{uvaDate}</div>}
+            </>
+          ) : (
+            <div className="uva-empty">
+              <span>No disponible</span>
+              <button className="btn small ghost" style={{ padding: '2px 8px', fontSize: 11 }} onClick={() => void fetchUvaValue(true)}>Obtener</button>
+            </div>
+          )}
+        </div>
         <div className="sidebar-footer">
           <button className="nav-item" onClick={() => setDarkMode((d) => !d)} aria-label="Cambiar tema">
             {darkMode ? <Sun size={18} /> : <Moon size={18} />}
@@ -1758,6 +1814,7 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
         {view === 'groups' && renderGroups()}
         {view === 'installments' && renderInstallments()}
         {view === 'settlement' && renderSettlement()}
+        {view === 'metas' && renderMetas()}
         {view === 'settings' && renderSettings()}
       </main>
 
@@ -2048,6 +2105,35 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
           </section>
         )}
 
+        {savingsGoals.length > 0 && (
+          <section className="panel">
+            <div className="panel-head">
+              <h2>Metas de ahorro</h2>
+              <button className="btn small ghost" onClick={() => setView('metas')}>Ver todas →</button>
+            </div>
+            <div className="goals-strip">
+              {savingsGoals.slice(0, 3).map((goal) => {
+                const pct = Math.min(Math.round((goal.saved / goal.target) * 100), 100)
+                const accentMap: Record<SavingsGoal['color'], string> = {
+                  coral: 'var(--coral)', olive: 'var(--olive)', plum: 'var(--plum)', rust: 'var(--rust)',
+                }
+                return (
+                  <div key={goal.id} className="goal-strip-item">
+                    <span className="goal-strip-emoji">{goal.emoji}</span>
+                    <div className="goal-strip-info">
+                      <div className="goal-strip-title">{goal.title}</div>
+                      <div className="goal-strip-bar">
+                        <div className="goal-strip-fill" style={{ width: `${pct}%`, background: accentMap[goal.color] }} />
+                      </div>
+                    </div>
+                    <span className="goal-strip-pct" style={{ color: accentMap[goal.color] }}>{pct}%</span>
+                  </div>
+                )
+              })}
+            </div>
+          </section>
+        )}
+
         <div className="grid-2">
           <section className="panel">
             <div className="panel-head"><h2>Gastos por categoria</h2></div>
@@ -2266,8 +2352,22 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
           {groups.map((group) => (
             <section key={group.id} className={cn('panel group-card', selectedGroupId === group.id && 'selected')} onClick={() => setSelectedGroupId(group.id)}>
               <div className="panel-head">
-                <div><h2>{group.name}</h2><p>{group.description}</p></div>
-                <Badge tone="info">{groupMembers(group.id).length} miembro{groupMembers(group.id).length !== 1 ? 's' : ''}</Badge>
+                <div style={{ minWidth: 0 }}>
+                  <h2>{group.name}</h2>
+                  {group.description && <p>{group.description}</p>}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+                  <Badge tone="info">{groupMembers(group.id).length} miembro{groupMembers(group.id).length !== 1 ? 's' : ''}</Badge>
+                  {confirmDeleteGroup === group.id ? (
+                    <div className="tx-confirm-delete" onClick={(e) => e.stopPropagation()}>
+                      <span>¿Eliminar?</span>
+                      <button className="btn small danger" onClick={() => void deleteGroup(group.id)}>Sí</button>
+                      <button className="btn small" onClick={() => setConfirmDeleteGroup(null)}>No</button>
+                    </div>
+                  ) : (
+                    <button className="icon-btn sm danger" onClick={(e) => { e.stopPropagation(); setConfirmDeleteGroup(group.id) }} aria-label="Eliminar grupo"><Trash2 size={13} /></button>
+                  )}
+                </div>
               </div>
               <div className="avatar-row">
                 {groupMembers(group.id).map((member) => <span key={member.id} className="avatar" title={profileName(member.user_id)}>{profileName(member.user_id).slice(0, 1)}</span>)}
@@ -2799,6 +2899,130 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
               )
             })}
           </div>
+        )}
+      </section>
+    )
+  }
+
+  function renderMetas() {
+    const goalColorMap: Record<SavingsGoal['color'], { bg: string; ink: string; accent: string }> = {
+      coral: { bg: 'var(--coral-tint)', ink: 'var(--coral-ink)', accent: 'var(--coral)' },
+      olive: { bg: 'var(--olive-tint)', ink: 'var(--olive-ink)', accent: 'var(--olive)' },
+      plum:  { bg: 'var(--plum-tint)',  ink: 'var(--plum-ink)',  accent: 'var(--plum)' },
+      rust:  { bg: 'var(--rust-tint)',  ink: 'oklch(0.40 0.14 25)', accent: 'var(--rust)' },
+    }
+    const totalSaved  = savingsGoals.reduce((s, g) => s + g.saved, 0)
+    const totalTarget = savingsGoals.reduce((s, g) => s + g.target, 0)
+    const completed   = savingsGoals.filter((g) => g.saved >= g.target).length
+
+    function addGoal() {
+      if (!goalForm.title.trim() || !goalForm.target) return
+      const newGoal: SavingsGoal = {
+        id: `goal-${Date.now()}`,
+        title: goalForm.title.trim(),
+        target: Number(goalForm.target),
+        saved: Number(goalForm.saved) || 0,
+        emoji: goalForm.emoji || '🎯',
+        deadline: goalForm.deadline || null,
+        color: goalForm.color,
+      }
+      setSavingsGoals((prev) => [...prev, newGoal])
+      setGoalForm({ title: '', target: '', saved: '', emoji: '🎯', deadline: '', color: 'olive' })
+      setShowGoalForm(false)
+    }
+
+    function deleteGoal(id: string) {
+      setSavingsGoals((prev) => prev.filter((g) => g.id !== id))
+    }
+
+    function addProgress(id: string, amount: number) {
+      setSavingsGoals((prev) => prev.map((g) => g.id === id ? { ...g, saved: Math.min(g.saved + amount, g.target) } : g))
+    }
+
+    return (
+      <section className="page-stack">
+        {/* Summary row */}
+        <div className="metric-grid compact">
+          <div className="metric">
+            <div className="metric-icon neutral"><Target size={16} /></div>
+            <span>Total ahorrado</span>
+            <strong>{formatARS(totalSaved)}</strong>
+          </div>
+          <div className="metric">
+            <div className="metric-icon success"><Check size={16} /></div>
+            <span>{completed} de {savingsGoals.length} metas cumplidas</span>
+            <strong style={{ fontSize: 22 }}>{savingsGoals.length > 0 ? Math.round((totalSaved / totalTarget) * 100) : 0}%</strong>
+          </div>
+        </div>
+
+        {/* Goals list */}
+        <div className="goal-stack">
+          {savingsGoals.map((goal) => {
+            const pct  = Math.min(Math.round((goal.saved / goal.target) * 100), 100)
+            const done = goal.saved >= goal.target
+            const col  = goalColorMap[goal.color]
+            return (
+              <div key={goal.id} className="goal-card" style={{ '--goal-accent': col.accent, '--goal-bg': col.bg, '--goal-ink': col.ink } as React.CSSProperties}>
+                <div className="goal-card-head">
+                  <span className="goal-emoji">{goal.emoji}</span>
+                  <div className="goal-card-info">
+                    <strong className="goal-title">{goal.title}</strong>
+                    {goal.deadline && <span className="goal-deadline">{goal.deadline.replace('-', ' / ')}</span>}
+                  </div>
+                  <div className="goal-card-right">
+                    {done ? <Badge tone="success">✓ Lograda</Badge> : <span className="goal-pct">{pct}%</span>}
+                    <button className="icon-btn sm danger" onClick={() => deleteGoal(goal.id)} aria-label="Eliminar meta"><Trash2 size={12} /></button>
+                  </div>
+                </div>
+                {/* Progress bar */}
+                <div className="goal-progress-track">
+                  <div className="goal-progress-fill" style={{ width: `${pct}%` }} />
+                </div>
+                {/* Amounts row */}
+                <div className="goal-amounts">
+                  <span className="goal-saved">{formatARS(goal.saved)} ahorrado</span>
+                  <span className="goal-target">meta {formatARS(goal.target)}</span>
+                </div>
+                {/* Quick add row */}
+                {!done && (
+                  <div className="goal-quick-add">
+                    {[10000, 50000, 100000].map((amt) => (
+                      <button key={amt} className="goal-add-btn" onClick={() => addProgress(goal.id, amt)}>+{formatARS(amt)}</button>
+                    ))}
+                    <span className="goal-remaining">Faltan {formatARS(goal.target - goal.saved)}</span>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Add goal form */}
+        {showGoalForm ? (
+          <section className="panel">
+            <div className="panel-head"><h2>Nueva meta</h2><button className="icon-btn sm" onClick={() => setShowGoalForm(false)}><X size={14} /></button></div>
+            <div className="form-grid">
+              <label>Título<input value={goalForm.title} onChange={(e) => setGoalForm((f) => ({ ...f, title: e.target.value }))} placeholder="Ej. Vacaciones" /></label>
+              <label>Emoji<input value={goalForm.emoji} onChange={(e) => setGoalForm((f) => ({ ...f, emoji: e.target.value }))} placeholder="🎯" style={{ maxWidth: 80 }} /></label>
+              <label>Objetivo (ARS)<input type="number" value={goalForm.target} onChange={(e) => setGoalForm((f) => ({ ...f, target: e.target.value }))} placeholder="500000" /></label>
+              <label>Ya ahorrado<input type="number" value={goalForm.saved} onChange={(e) => setGoalForm((f) => ({ ...f, saved: e.target.value }))} placeholder="0" /></label>
+              <label>Fecha límite<input type="month" value={goalForm.deadline} onChange={(e) => setGoalForm((f) => ({ ...f, deadline: e.target.value }))} /></label>
+              <label>Color
+                <select value={goalForm.color} onChange={(e) => setGoalForm((f) => ({ ...f, color: e.target.value as SavingsGoal['color'] }))}>
+                  <option value="olive">Verde</option>
+                  <option value="coral">Coral</option>
+                  <option value="plum">Púrpura</option>
+                  <option value="rust">Naranja</option>
+                </select>
+              </label>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+              <button className="btn primary" onClick={addGoal}><Plus size={15} />Guardar meta</button>
+              <button className="btn ghost" onClick={() => setShowGoalForm(false)}>Cancelar</button>
+            </div>
+          </section>
+        ) : (
+          <button className="btn primary" style={{ alignSelf: 'flex-start' }} onClick={() => setShowGoalForm(true)}><Plus size={16} />Nueva meta</button>
         )}
       </section>
     )

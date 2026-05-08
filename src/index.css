@@ -86,56 +86,59 @@
 
 /* ── Dark mode ─────────────────────────────── */
 [data-theme="dark"] {
-  --coral:      oklch(0.74 0.14 35);
-  --coral-ink:  oklch(0.86 0.10 35);
-  --coral-tint: oklch(0.28 0.06 35);
+  /* Richer, more vivid accents on dark */
+  --coral:      oklch(0.72 0.18 35);
+  --coral-ink:  oklch(0.90 0.10 35);
+  --coral-tint: oklch(0.20 0.08 35);
 
-  --olive:      oklch(0.68 0.12 130);
-  --olive-ink:  oklch(0.82 0.10 130);
-  --olive-tint: oklch(0.26 0.05 130);
+  --olive:      oklch(0.70 0.15 130);
+  --olive-ink:  oklch(0.86 0.10 130);
+  --olive-tint: oklch(0.20 0.06 130);
 
-  --plum:       oklch(0.62 0.12 320);
-  --plum-ink:   oklch(0.78 0.10 320);
-  --plum-tint:  oklch(0.26 0.06 320);
+  --plum:       oklch(0.64 0.15 320);
+  --plum-ink:   oklch(0.84 0.10 320);
+  --plum-tint:  oklch(0.20 0.07 320);
 
-  --rust:       oklch(0.66 0.14 25);
-  --rust-tint:  oklch(0.26 0.06 25);
+  --rust:       oklch(0.68 0.18 25);
+  --rust-tint:  oklch(0.20 0.08 25);
 
-  --cp-muted:  oklch(0.28 0.06 35 / 0.6);
-  --cp-ring:   oklch(0.74 0.14 35 / 0.25);
+  --cp-muted:  oklch(0.20 0.08 35 / 0.7);
+  --cp-ring:   oklch(0.72 0.18 35 / 0.30);
 
-  --bg:  #14110d;
-  --s:   #1c1814;
-  --s2:  #221d18;
-  --bd:  #2c2620;
-  --bd2: #3a332c;
+  /* Deeper, richer warm darks */
+  --bg:  #100e0b;
+  --s:   #191510;
+  --s2:  #1f1a14;
+  --bd:  #2a231b;
+  --bd2: #382e24;
 
-  --t:  #f3ede0;
-  --t2: #9a9082;
-  --t3: #6b6356;
+  /* Brighter text for better readability */
+  --t:  #f6f0e3;
+  --t2: #a8998c;
+  --t3: #6e6256;
 
-  --ok-bg: oklch(0.26 0.05 130);
-  --ok-fg: oklch(0.82 0.10 130);
-  --ok:    oklch(0.68 0.12 130);
+  --ok-bg: oklch(0.20 0.06 130);
+  --ok-fg: oklch(0.84 0.12 130);
+  --ok:    oklch(0.70 0.15 130);
 
-  --er-bg: oklch(0.26 0.06 25);
-  --er-fg: oklch(0.78 0.12 25);
-  --er:    oklch(0.66 0.14 25);
+  --er-bg: oklch(0.20 0.07 25);
+  --er-fg: oklch(0.82 0.14 25);
+  --er:    oklch(0.68 0.18 25);
 
-  --wa-bg: oklch(0.26 0.06 65);
-  --wa-fg: oklch(0.80 0.10 65);
+  --wa-bg: oklch(0.20 0.07 65);
+  --wa-fg: oklch(0.84 0.12 65);
 
-  --in-bg: oklch(0.26 0.06 320);
-  --in-fg: oklch(0.78 0.10 320);
+  --in-bg: oklch(0.20 0.07 320);
+  --in-fg: oklch(0.82 0.12 320);
 
-  --nu-bg: rgba(255,255,255,.06);
-  --nu-fg: #9a9082;
+  --nu-bg: rgba(255,255,255,.055);
+  --nu-fg: #a8998c;
 
-  --sh0: 0 1px 2px rgba(0,0,0,.35);
-  --sh1: 0 1px 4px rgba(0,0,0,.45);
-  --sh2: 0 4px 16px rgba(0,0,0,.55);
-  --sh3: 0 10px 32px rgba(0,0,0,.65);
-  --sh4: 0 24px 72px rgba(0,0,0,.75);
+  --sh0: 0 1px 3px rgba(0,0,0,.40);
+  --sh1: 0 2px 6px rgba(0,0,0,.50);
+  --sh2: 0 6px 20px rgba(0,0,0,.60);
+  --sh3: 0 12px 40px rgba(0,0,0,.70);
+  --sh4: 0 28px 80px rgba(0,0,0,.80);
 }
 
 /* ══════════════════════════════════════════════
@@ -2438,8 +2441,20 @@ tr:hover td { background: var(--s2); }
   background: var(--t);
   color: var(--s);
   border-radius: var(--r4);
-  padding: 22px;
+  padding: 24px 22px 22px;
   border: none;
+  position: relative;
+  overflow: hidden;
+}
+/* subtle texture ring */
+.hero-balance-card::after {
+  content: '';
+  position: absolute;
+  top: -40px; right: -40px;
+  width: 180px; height: 180px;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--s) 8%, transparent);
+  pointer-events: none;
 }
 .hero-balance-card .hero-eyebrow {
   font-family: 'Geist Mono', monospace;
@@ -2642,22 +2657,317 @@ tr:hover td { background: var(--s2); }
 .plan-type-chip.ars { background: var(--coral-tint); color: var(--coral-ink); }
 .plan-type-chip.uva { background: var(--plum-tint);  color: var(--plum-ink); }
 
-/* sidebar UVA card */
+/* sidebar UVA card — redesigned */
 .sidebar-uva-card {
-  background: var(--s2);
+  background: var(--plum-tint);
+  border: 1px solid transparent;
   border-radius: var(--r2);
-  padding: 12px;
+  padding: 11px 12px;
   margin-top: auto;
 }
+[data-theme="dark"] .sidebar-uva-card {
+  border-color: var(--bd);
+  background: var(--plum-tint);
+}
+.sidebar-uva-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
 .sidebar-uva-card .uva-val {
-  font-size: 17px;
-  font-weight: 600;
+  font-family: 'Geist Mono', monospace;
+  font-size: 18px;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
-  margin-top: 3px;
+  letter-spacing: -0.02em;
+  color: var(--plum-ink);
+  line-height: 1.1;
 }
 .sidebar-uva-card .uva-delta {
   font-family: 'Geist Mono', monospace;
   font-size: 10px;
-  color: var(--olive-ink);
+  color: var(--plum-ink);
+  opacity: 0.6;
   margin-top: 2px;
+}
+.uva-refresh-btn {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--r1);
+  background: var(--plum);
+  color: #fff;
+  border: 0;
+  cursor: pointer;
+  opacity: 0.85;
+  transition: opacity 120ms, transform 120ms;
+}
+.uva-refresh-btn:hover:not(:disabled) { opacity: 1; transform: scale(1.1); }
+.uva-refresh-btn:disabled { opacity: 0.4; cursor: default; }
+.uva-empty {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--plum-ink);
+  opacity: 0.7;
+}
+
+/* ══════════════════════════════════════════════
+   SAVINGS GOALS (Metas)
+══════════════════════════════════════════════ */
+.goal-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.goal-card {
+  background: var(--s);
+  border: 1px solid var(--bd);
+  border-radius: var(--r3);
+  padding: 16px 18px;
+  box-shadow: var(--sh0);
+  transition: box-shadow 150ms;
+}
+.goal-card:hover { box-shadow: var(--sh2); }
+
+.goal-card-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.goal-emoji {
+  font-size: 28px;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.goal-card-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.goal-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--t);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.goal-deadline {
+  font-size: 11.5px;
+  color: var(--t3);
+  font-family: 'Geist Mono', monospace;
+}
+.goal-card-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.goal-pct {
+  font-family: 'Instrument Serif', Georgia, serif;
+  font-size: 26px;
+  color: var(--goal-accent);
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+
+/* Progress track */
+.goal-progress-track {
+  height: 8px;
+  background: var(--s2);
+  border-radius: 999px;
+  overflow: hidden;
+  position: relative;
+}
+.goal-progress-fill {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  background: var(--goal-accent);
+  border-radius: 999px;
+  transition: width 600ms cubic-bezier(.4,0,.2,1);
+}
+
+/* Amounts row */
+.goal-amounts {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 8px;
+}
+.goal-saved {
+  font-size: 13px;
+  font-weight: 700;
+  font-family: 'Geist Mono', monospace;
+  color: var(--goal-ink);
+  letter-spacing: -0.01em;
+}
+.goal-target {
+  font-size: 12px;
+  color: var(--t3);
+  font-family: 'Geist Mono', monospace;
+}
+
+/* Quick add row */
+.goal-quick-add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.goal-add-btn {
+  padding: 4px 10px;
+  border-radius: var(--rf);
+  background: var(--goal-bg);
+  color: var(--goal-ink);
+  border: 0;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 120ms, transform 120ms;
+}
+.goal-add-btn:hover { opacity: 0.85; transform: scale(1.04); }
+.goal-remaining {
+  font-size: 12px;
+  color: var(--t3);
+  margin-left: auto;
+  font-family: 'Geist Mono', monospace;
+}
+
+/* Dashboard goals preview strip */
+.goals-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.goal-strip-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--bd);
+}
+.goal-strip-item:last-child { border-bottom: 0; }
+.goal-strip-emoji { font-size: 20px; flex-shrink: 0; }
+.goal-strip-info { flex: 1; min-width: 0; }
+.goal-strip-title { font-size: 13.5px; font-weight: 600; color: var(--t); }
+.goal-strip-bar { height: 4px; background: var(--s2); border-radius: 999px; margin-top: 4px; overflow: hidden; }
+.goal-strip-fill { height: 100%; border-radius: 999px; }
+.goal-strip-pct { font-size: 13px; font-weight: 700; font-family: 'Geist Mono', monospace; flex-shrink: 0; }
+
+/* ══════════════════════════════════════════════
+   DARK MODE — COMPONENT REFINEMENTS
+══════════════════════════════════════════════ */
+
+/* Cards get a very subtle inset top highlight in dark */
+[data-theme="dark"] .metric,
+[data-theme="dark"] .panel,
+[data-theme="dark"] .plan-card,
+[data-theme="dark"] .goal-card,
+[data-theme="dark"] .balance-card {
+  box-shadow: 0 0 0 0.5px var(--bd2) inset, var(--sh0);
+}
+
+/* Metric number — brighter in dark */
+[data-theme="dark"] .metric strong { color: var(--t); }
+
+/* Insight card dark mode */
+[data-theme="dark"] .insight-card {
+  background: color-mix(in oklab, var(--coral-tint) 80%, var(--s));
+  border: 1px solid color-mix(in oklab, var(--coral) 25%, transparent);
+}
+
+/* Hero card dark mode — use a very dark warm tone so it reads as "inverted" */
+[data-theme="dark"] .hero-balance-card {
+  background: var(--s2);
+  color: var(--t);
+  border: 1px solid var(--bd);
+  box-shadow: var(--sh1);
+}
+[data-theme="dark"] .hero-balance-card .hero-eyebrow {
+  color: var(--t3);
+}
+[data-theme="dark"] .hero-balance-card .hero-balance-num {
+  color: var(--t);
+}
+[data-theme="dark"] .hero-balance-grid .hbg-label {
+  color: var(--t3);
+}
+[data-theme="dark"] .hero-balance-grid .hbg-income  { color: var(--olive-ink); }
+[data-theme="dark"] .hero-balance-grid .hbg-expense { color: var(--t2); }
+[data-theme="dark"] .hero-balance-grid .hbg-cuotas  { color: var(--t2); }
+[data-theme="dark"] .hero-balance-card::after { display: none; }
+
+/* Plan filter pills — better active state in dark */
+[data-theme="dark"] .plan-filter-pill.active {
+  background: var(--coral);
+  border-color: var(--coral);
+}
+
+/* Expense card paid — dark */
+[data-theme="dark"] .expense-card.paid { background: var(--ok-bg); }
+
+/* Bottom nav active icon container */
+[data-theme="dark"] .bottom-nav-item.active .bottom-nav-icon {
+  background: var(--coral-tint);
+}
+
+/* Sidebar nav item active */
+[data-theme="dark"] .nav-item.active {
+  background: var(--coral-tint);
+  color: var(--coral-ink);
+}
+[data-theme="dark"] .nav-item:hover {
+  background: var(--coral-tint);
+  color: var(--coral-ink);
+}
+
+/* Metric icons tinted */
+[data-theme="dark"] .success .metric-icon { background: var(--ok-bg);  color: var(--ok-fg); }
+[data-theme="dark"] .danger  .metric-icon { background: var(--er-bg);  color: var(--er-fg); }
+[data-theme="dark"] .warning .metric-icon { background: var(--wa-bg);  color: var(--wa-fg); }
+[data-theme="dark"] .info    .metric-icon { background: var(--in-bg);  color: var(--in-fg); }
+[data-theme="dark"] .neutral .metric-icon { background: var(--nu-bg);  color: var(--nu-fg); }
+
+/* inst-summary cards dark mode borders */
+[data-theme="dark"] .inst-summary-card.warning { border-color: color-mix(in oklab, var(--wa-fg) 30%, transparent); }
+[data-theme="dark"] .inst-summary-card.success { border-color: color-mix(in oklab, var(--ok-fg) 30%, transparent); }
+[data-theme="dark"] .inst-summary-card.info    { border-color: color-mix(in oklab, var(--in-fg) 30%, transparent); }
+[data-theme="dark"] .inst-summary-card.danger  { border-color: color-mix(in oklab, var(--er-fg) 30%, transparent); }
+
+/* gbal cards dark */
+[data-theme="dark"] .gbal-card.positive { background: var(--ok-bg); }
+[data-theme="dark"] .gbal-card.negative { background: var(--er-bg); }
+
+/* Segmented progress bar — slightly more visible empty segments in dark */
+[data-theme="dark"] .seg-progress-item { background: var(--bd2); }
+
+/* Settlement */
+[data-theme="dark"] .settlement-item { background: var(--s2); }
+
+/* Modal */
+[data-theme="dark"] .modal-backdrop { background: rgba(0,0,0,.65); }
+
+/* Chip active — dark */
+[data-theme="dark"] .chip.active { border-color: var(--coral); color: var(--coral); background: var(--coral-tint); }
+[data-theme="dark"] .chip:hover  { border-color: var(--coral); color: var(--coral-ink); }
+
+/* Goal card — dark */
+[data-theme="dark"] .goal-card {
+  box-shadow: 0 0 0 0.5px var(--bd2) inset, var(--sh0);
+}
+[data-theme="dark"] .goal-progress-track { background: var(--bd2); }
+
+/* Topbar display title — slightly smaller on screens where serif looks large */
+@media (max-width: 640px) {
+  .topbar-display-title { font-size: 22px; }
 }
