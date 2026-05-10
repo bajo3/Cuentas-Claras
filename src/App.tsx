@@ -559,7 +559,8 @@ function App() {
       return
     }
 
-    const paidInsts = installments.filter((i) => i.plan_id === plan.id && i.status === 'paid')
+    const planInsts = installments.filter((i) => i.plan_id === plan.id)
+    const paidInsts = planInsts.filter((i) => i.status === 'paid')
     const pendingInsts = installments.filter((i) => i.plan_id === plan.id && i.status === 'pending')
 
     if (paidInsts.length > 0 && !confirmRecalcPlan) {
@@ -574,12 +575,11 @@ function App() {
         : Math.round((total / count) * 100) / 100
 
     const totalPendingCount = Math.max(0, count - paidInsts.length)
+    const shouldRecalculateCompletedPlan = paidInsts.length > 0 && pendingInsts.length === 0
 
-    const buildPending = () =>
-      Array.from({ length: totalPendingCount }, (_, idx) => {
-        const instNum = paidInsts.length + idx + 1
+    const buildInstallmentData = (instNum: number) => {
         const date = new Date(`${editPlanForm.start_date}T00:00:00`)
-        date.setMonth(date.getMonth() + paidInsts.length + idx)
+        date.setMonth(date.getMonth() + instNum - 1)
         date.setDate(Math.min(dueDay, 28))
         return {
           plan_id: plan.id,
@@ -591,7 +591,12 @@ function App() {
           uva_count: plan.plan_type === 'UVA' ? uvaCountVal : null,
           uva_value: plan.plan_type === 'UVA' ? effectiveUvaValue : null,
         }
-      })
+      }
+
+    const buildPending = () =>
+      Array.from({ length: totalPendingCount }, (_, idx) => buildInstallmentData(paidInsts.length + idx + 1))
+    const buildCompletedRecalc = () =>
+      Array.from({ length: Math.min(count, planInsts.length) }, (_, idx) => buildInstallmentData(idx + 1))
 
     const updatedPlan: InstallmentPlan = {
       ...plan,
@@ -607,10 +612,18 @@ function App() {
     if (isDemo) {
       const newPending = buildPending().map((i) => ({ id: crypto.randomUUID(), created_at: todayISO(), ...i }))
       setPlans((items) => items.map((p) => (p.id === plan.id ? updatedPlan : p)))
-      setInstallments((items) => [
-        ...items.filter((i) => i.plan_id !== plan.id || i.status === 'paid'),
-        ...newPending,
-      ])
+      if (shouldRecalculateCompletedPlan) {
+        const recalculatedByNumber = new Map(buildCompletedRecalc().map((inst) => [inst.number, inst]))
+        setInstallments((items) => items.map((item) => {
+          const nextInst = item.plan_id === plan.id ? recalculatedByNumber.get(item.number) : null
+          return nextInst ? { ...item, ...nextInst, status: item.status, paid_at: item.paid_at } : item
+        }))
+      } else {
+        setInstallments((items) => [
+          ...items.filter((i) => i.plan_id !== plan.id || i.status === 'paid'),
+          ...newPending,
+        ])
+      }
     } else {
       const { error: planErr } = await supabase
         .from('installment_plans')
@@ -629,19 +642,89 @@ function App() {
         setNotice('Error al guardar el plan')
         return
       }
-      for (const inst of pendingInsts) {
-        await supabase.from('installments').delete().eq('id', inst.id)
+      const recalculatedPending = buildPending()
+      const pendingByNumber = new Map(pendingInsts.map((inst) => [inst.number, inst]))
+
+      if (shouldRecalculateCompletedPlan) {
+        const planInstsByNumber = new Map(planInsts.map((inst) => [inst.number, inst]))
+        const recalculatedCompleted = buildCompletedRecalc()
+        for (const nextInst of recalculatedCompleted) {
+          const existing = planInstsByNumber.get(nextInst.number)
+          if (!existing) continue
+          const { error: instErr } = await supabase
+            .from('installments')
+            .update({
+              amount: nextInst.amount,
+              due_on: nextInst.due_on,
+              uva_count: nextInst.uva_count,
+              uva_value: nextInst.uva_value,
+            })
+            .eq('id', existing.id)
+          if (instErr) {
+            logSupabaseError('edit-plan-completed-installment-update', instErr)
+            setNotice('Error al recalcular cuotas')
+            return
+          }
+        }
+        const recalculatedByNumber = new Map(recalculatedCompleted.map((inst) => [inst.number, inst]))
+        setPlans((items) => items.map((p) => (p.id === plan.id ? updatedPlan : p)))
+        setInstallments((items) => items.map((item) => {
+          const nextInst = item.plan_id === plan.id ? recalculatedByNumber.get(item.number) : null
+          return nextInst ? { ...item, ...nextInst, status: item.status, paid_at: item.paid_at } : item
+        }))
+        setEditingPlan(null)
+        setConfirmRecalcPlan(false)
+        setNotice('Plan actualizado')
+        return
       }
-      const toInsert = buildPending()
-      if (toInsert.length > 0) {
-        const { error: instsErr } = await supabase.from('installments').insert(toInsert)
-        if (instsErr) {
-          logSupabaseError('edit-plan-installments', instsErr)
+
+      for (const nextInst of recalculatedPending) {
+        const existing = pendingByNumber.get(nextInst.number)
+        if (existing) {
+          const { error: instErr } = await supabase
+            .from('installments')
+            .update({
+              amount: nextInst.amount,
+              due_on: nextInst.due_on,
+              status: nextInst.status,
+              paid_at: nextInst.paid_at,
+              uva_count: nextInst.uva_count,
+              uva_value: nextInst.uva_value,
+            })
+            .eq('id', existing.id)
+          if (instErr) {
+            logSupabaseError('edit-plan-installment-update', instErr)
+            setNotice('Error al recalcular cuotas')
+            return
+          }
+        } else {
+          const { error: instErr } = await supabase.from('installments').insert(nextInst)
+          if (instErr) {
+            logSupabaseError('edit-plan-installment-insert', instErr)
+            setNotice('Error al recalcular cuotas')
+            return
+          }
+        }
+      }
+
+      const keepNumbers = new Set(recalculatedPending.map((inst) => inst.number))
+      const extraPending = pendingInsts.filter((inst) => !keepNumbers.has(inst.number))
+      for (const inst of extraPending) {
+        const { error: deleteErr } = await supabase.from('installments').delete().eq('id', inst.id)
+        if (deleteErr) {
+          logSupabaseError('edit-plan-installment-delete', deleteErr)
           setNotice('Error al recalcular cuotas')
           return
         }
       }
-      const newPending = buildPending().map((i) => ({ id: crypto.randomUUID(), created_at: todayISO(), ...i }))
+      const newPending = recalculatedPending.map((inst) => {
+        const existing = pendingByNumber.get(inst.number)
+        return {
+          id: existing?.id ?? crypto.randomUUID(),
+          created_at: existing?.created_at ?? todayISO(),
+          ...inst,
+        }
+      })
       setPlans((items) => items.map((p) => (p.id === plan.id ? updatedPlan : p)))
       setInstallments((items) => [
         ...items.filter((i) => i.plan_id !== plan.id || i.status === 'paid'),
@@ -2276,7 +2359,7 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
               return (
                 <div key={date} className="tx-date-group">
                   <div className="tx-date-header">
-                    <span className="tx-date-label">{dateLabel(date)}</span>
+                    <span className="tx-date-label">{dateLabel(date)} <small>{dayTxs.length} mov.</small></span>
                     <span className="tx-date-summary">
                       {dayIncome > 0 && <span className="tx-date-income">+{formatARS(dayIncome)}</span>}
                       {dayExpense > 0 && <span className="tx-date-expense">-{formatARS(dayExpense)}</span>}
@@ -2287,24 +2370,22 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
                       const cat = categories.find((c) => c.id === tx.category_id)
                       const isConfirming = confirmDeleteTx === tx.id
                       return (
-                        <div key={tx.id} className={cn('tx-row', isConfirming && 'confirming')}>
+                        <div key={tx.id} className={cn('tx-row', `tx-row--${tx.type}`, isConfirming && 'confirming')}>
                           <div className="tx-icon" style={cat?.color ? { background: `${cat.color}18`, color: cat.color } : undefined}>
                             {tx.type === 'income' ? <ArrowUpRight size={18} /> : <ArrowDownRight size={18} />}
                           </div>
                           <div className="tx-body">
                             <div className="tx-title-row">
                               <span className="tx-title">{tx.title}</span>
-                              <span className={cn('tx-amount', tx.type)}>
-                                {tx.type === 'income' ? '+' : '-'}{formatARS(tx.amount)}
-                              </span>
                             </div>
                             <div className="tx-tags">
                               {cat && <span className="tx-cat-dot" style={{ background: cat.color }} />}
-                              {cat && <span className="tx-meta">{cat.name}</span>}
-                              <span className={cn('badge', tx.type === 'income' ? 'success' : 'neutral')} style={{ fontSize: 10, padding: '1px 7px', marginLeft: 'auto' }}>
+                              <span className="tx-meta">{cat?.name ?? 'Sin categoria'}</span>
+                              <span className={cn('tx-type-chip', tx.type)}>
                                 {tx.type === 'income' ? 'Ingreso' : 'Gasto'}
                               </span>
                             </div>
+                            {tx.notes && <p className="tx-note">{tx.notes}</p>}
                             {isConfirming ? (
                               <div className="tx-confirm-delete" style={{ marginTop: 8 }}>
                                 <span>¿Eliminar?</span>
@@ -2320,6 +2401,12 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
                                 <button className="btn small ghost danger" onClick={() => setConfirmDeleteTx(tx.id)}><Trash2 size={12} /></button>
                               </div>
                             )}
+                          </div>
+                          <div className="tx-side">
+                            <span className={cn('tx-amount', tx.type)}>
+                              {tx.type === 'income' ? '+' : '-'}{formatARS(tx.amount)}
+                            </span>
+                            <span className="tx-side-date">{formatDateAR(tx.occurred_on)}</span>
                           </div>
                         </div>
                       )
@@ -2637,6 +2724,10 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
     const today = todayISO()
     const currentUva = uvaValue ?? (uvaManual ? Number(uvaManual) : null)
     const userPlans = plans.filter((p) => p.user_id === currentUser.id || (p.group_id && visibleGroupIds.includes(p.group_id)))
+    const isPlanArchived = (plan: InstallmentPlan) => {
+      const planInsts = installments.filter((i) => i.plan_id === plan.id)
+      return planInsts.length > 0 && planInsts.every((i) => i.status === 'paid')
+    }
 
     const filteredPlans = userPlans.filter((plan) => {
       const planInsts = installments.filter((i) => i.plan_id === plan.id)
@@ -2649,6 +2740,8 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
         default: return true
       }
     })
+    const activePlans = filteredPlans.filter((plan) => !isPlanArchived(plan))
+    const archivedPlans = filteredPlans.filter(isPlanArchived)
     const allUserInsts = installments.filter((i) => userPlans.some((p) => p.id === i.plan_id))
     const totalFinanciado = userPlans.reduce((s, p) => s + Number(p.total_amount), 0)
     const totalPagado = allUserInsts.filter((i) => i.status === 'paid').reduce((s, i) => s + Number(i.amount), 0)
@@ -2769,8 +2862,10 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
         ) : filteredPlans.length === 0 ? (
           <div className="empty">Sin planes para este filtro.</div>
         ) : (
+          <>
+          {activePlans.length > 0 && (
           <div className="plan-stack">
-            {filteredPlans.map((plan) => {
+            {activePlans.map((plan) => {
               const isUva = plan.plan_type === 'UVA'
               const planInstallments = installments.filter((i) => i.plan_id === plan.id).sort((a, b) => a.number - b.number)
               const paidCount = planInstallments.filter((i) => i.status === 'paid').length
@@ -2791,6 +2886,7 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
 
               const planStatusTone = allPaid ? 'success' : overdueInPlan > 0 ? 'danger' : 'neutral'
               const planStatusLabel = allPaid ? 'Completada' : overdueInPlan > 0 ? `${overdueInPlan} vencida${overdueInPlan > 1 ? 's' : ''}` : 'Al dia'
+              const progressPct = planInstallments.length > 0 ? Math.round((paidCount / planInstallments.length) * 100) : 0
 
               // Next installment amount in ARS (for UVA: recalculate with current value if available)
               const nextInstArs = nextInst
@@ -2825,16 +2921,19 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
                   </div>
 
                   {/* Segmented progress bar */}
-                  <div className="seg-progress">
-                    {Array.from({ length: Math.min(planInstallments.length, 24) }).map((_, k) => {
-                      const totalSegs = Math.min(planInstallments.length, 24)
-                      const filledSegs = Math.round((paidCount / planInstallments.length) * totalSegs)
-                      const filled = k < filledSegs
-                      const colorClass = filled
-                        ? isUva ? 'filled-plum' : allPaid ? 'filled-olive' : overdueInPlan > 0 ? 'filled-rust' : 'filled-coral'
-                        : ''
-                      return <div key={k} className={`seg-progress-item${filled ? ` ${colorClass}` : ''}`} />
-                    })}
+                  <div className="seg-progress-wrap" aria-label={`${progressPct}% pagado`}>
+                    <div className="seg-progress">
+                      {Array.from({ length: Math.min(planInstallments.length, 24) }).map((_, k) => {
+                        const totalSegs = Math.min(planInstallments.length, 24)
+                        const filledSegs = Math.round((paidCount / planInstallments.length) * totalSegs)
+                        const filled = k < filledSegs
+                        const colorClass = filled
+                          ? isUva ? 'filled-plum' : allPaid ? 'filled-olive' : overdueInPlan > 0 ? 'filled-rust' : 'filled-coral'
+                          : ''
+                        return <div key={k} className={`seg-progress-item${filled ? ` ${colorClass}` : ''}`} />
+                      })}
+                    </div>
+                    <span className="seg-progress-label">{progressPct}%</span>
                   </div>
 
                   {/* Summary (always visible) */}
@@ -2927,6 +3026,106 @@ const unreadCount = notifications.filter((n) => !n.is_read && n.user_id === curr
               )
             })}
           </div>
+          )}
+
+          {archivedPlans.length > 0 && (
+            <section className="archived-plans">
+              <div className="archived-plans-head">
+                <h2>Cuotas archivadas</h2>
+                <Badge tone="success">{archivedPlans.length}</Badge>
+              </div>
+              <div className="plan-stack plan-stack--archived">
+                {archivedPlans.map((plan) => {
+                  const isUva = plan.plan_type === 'UVA'
+                  const planInstallments = installments.filter((i) => i.plan_id === plan.id).sort((a, b) => a.number - b.number)
+                  const paidCount = planInstallments.filter((i) => i.status === 'paid').length
+                  const isExpanded = expandedPlans.has(plan.id)
+                  const isConfirmingDelete = confirmDeletePlan === plan.id
+
+                  return (
+                    <div key={plan.id} className="plan-card plan-card--archived">
+                      <div className="plan-card-head">
+                        <div className="plan-icon"><CreditCard size={18} /></div>
+                        <div className="plan-info">
+                          <strong style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {plan.title}
+                            <span className={`plan-type-chip ${isUva ? 'uva' : 'ars'}`}>{isUva ? 'UVA' : 'ARS'}</span>
+                          </strong>
+                          <span>{plan.group_id ? groups.find((g) => g.id === plan.group_id)?.name : 'Privada'}</span>
+                        </div>
+                        <Badge tone="success">Archivada</Badge>
+                        <button className="icon-btn sm" onClick={() => openEditPlan(plan)} aria-label="Editar plan">
+                          <Edit3 size={14} />
+                        </button>
+                        <button
+                          className="icon-btn sm"
+                          onClick={() => togglePlan(plan.id)}
+                          aria-label={isExpanded ? 'Contraer' : 'Expandir'}
+                        >
+                          {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                        </button>
+                      </div>
+
+                      <div className="seg-progress-wrap" aria-label="100% pagado">
+                        <div className="seg-progress">
+                          {Array.from({ length: Math.min(planInstallments.length, 24) }).map((_, k) => (
+                            <div key={k} className="seg-progress-item filled-olive" />
+                          ))}
+                        </div>
+                        <span className="seg-progress-label">100%</span>
+                      </div>
+
+                      <div className="plan-summary">
+                        <p className="plan-done-msg">Plan completado y archivado</p>
+                        <div className="plan-summary-footer">
+                          <span className="plan-summary-text">
+                            {paidCount}/{planInstallments.length} pagadas
+                          </span>
+                          <div className="plan-footer-actions">
+                            {isConfirmingDelete ? (
+                              <div className="tx-confirm-delete">
+                                <span>Eliminar?</span>
+                                <button className="btn small danger" onClick={() => { void deletePlan(plan.id); setConfirmDeletePlan(null) }}>Si</button>
+                                <button className="btn small" onClick={() => setConfirmDeletePlan(null)}>No</button>
+                              </div>
+                            ) : (
+                              <button className="icon-btn sm danger" onClick={() => setConfirmDeletePlan(plan.id)} aria-label="Eliminar plan"><Trash2 size={14} /></button>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="inst-list inst-list--expanded">
+                          {planInstallments.map((inst) => (
+                            <div key={inst.id} className="inst-row">
+                              <span className="inst-num paid">{inst.number}</span>
+                              <div className="inst-date-block">
+                                <span className="inst-date">{formatDateAR(inst.due_on)}</span>
+                                {isUva && inst.uva_count && (
+                                  <span className="inst-uva-sub">{Number(inst.uva_count).toLocaleString('es-AR')} UVA</span>
+                                )}
+                              </div>
+                              <div className="inst-amount-block">
+                                <span className="inst-amount">{formatARS(inst.amount)}</span>
+                              </div>
+                              <Badge tone="success">Pagada</Badge>
+                              <div className="inst-action">
+                                <button className="btn small ghost" onClick={() => markInstallmentUnpaid(inst)} title="Desmarcar como pagada">
+                                  <RotateCcw size={13} />Desmarcar
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </section>
+          )}
+          </>
         )}
 
         {/* ── Gastos compartidos pendientes ── */}
